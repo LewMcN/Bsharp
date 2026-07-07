@@ -3,7 +3,7 @@ import * as Tone from "tone";
 import {
   Music, Zap, Target, Play, Square, Volume2, Award, Flame, RotateCcw,
   Check, X, Activity, Sparkles, Brain, Guitar, Ear, ChevronRight,
-  Radio, Crosshair, Layers, User, LogOut, BookOpen
+  Radio, Crosshair, Layers, User, LogOut, BookOpen, LayoutGrid
 } from "lucide-react";
 import { supabase, isConfigured } from "./lib/supabase";
 import Auth from "./Auth.jsx";
@@ -74,6 +74,98 @@ const ARPS = {
   dom7:  { name: "Dominant 7",    suf: "7",    iv: [0,4,7,10],  tip: "The blues engine. Target the 3 and b7 — they ARE the sound." },
   m7b5:  { name: "Minor 7 b5",    suf: "m7♭5", iv: [0,3,6,10],  tip: "Half-diminished — the ii of minor keys and jazz turnarounds." },
   dim7:  { name: "Diminished 7",  suf: "°7",   iv: [0,3,6,9],   tip: "Fully symmetric: same shape every 3 frets up the neck." },
+};
+
+/* --------------------------- CAGED positions --------------------------- */
+// Fret windows relative to r = fret of the root on the low E string.
+// The five shapes tile the whole neck in the fixed order C→A→G→E→D.
+const CAGED_POS = {
+  C: { off: -8, w: 3, roots: "5th & 2nd strings" },
+  A: { off: -6, w: 3, roots: "5th & 3rd strings" },
+  G: { off: -4, w: 4, roots: "6th, 3rd & 1st strings" },
+  E: { off: -1, w: 3, roots: "6th, 4th & 1st strings" },
+  D: { off: 1,  w: 3, roots: "4th & 2nd strings" },
+};
+
+/* --------------------------- Chord library --------------------------- */
+// Movable shapes in standard tuning. Arrays run low-E → high-E; numbers are
+// offsets from the root fret on the form's root string; null = muted.
+// E form roots on the 6th string, A form on the 5th — the CAGED barre forms.
+const CHORD_LIB = {
+  maj:  { name: "Major",        suf: "",     grp: "Triads", iv: [0,4,7], formula: "R · 3 · 5",
+          info: "The plain, resolved sound. The major 3rd is what makes it happy — everything else is scaffolding.",
+          forms: { E: [0,2,2,1,0,0], A: [null,0,2,2,2,0] } },
+  min:  { name: "Minor",        suf: "m",    grp: "Triads", iv: [0,3,7], formula: "R · b3 · 5",
+          info: "Flatten the 3rd by one fret and the chord turns sad. One semitone is the whole difference between major and minor.",
+          forms: { E: [0,2,2,0,0,0], A: [null,0,2,2,1,0] } },
+  dim:  { name: "Diminished",   suf: "°",    grp: "Triads", iv: [0,3,6], formula: "R · b3 · b5",
+          info: "Two minor 3rds stacked — maximum instability. It exists to resolve somewhere; it never wants to be home.",
+          forms: { A: [null,0,1,2,1,null] } },
+  aug:  { name: "Augmented",    suf: "+",    grp: "Triads", iv: [0,4,8], formula: "R · 3 · #5",
+          info: "The 5th pushed sharp. Symmetrical (repeats every 4 frets), dreamlike, great as a passing chord between I and vi.",
+          forms: { A: [null,0,3,2,2,1] } },
+  sus2: { name: "Sus 2",        suf: "sus2", grp: "Triads", iv: [0,2,7], formula: "R · 2 · 5",
+          info: "The 3rd replaced by the 2nd — neither major nor minor, just open. 'Sus' = suspended: the 3rd is held back.",
+          forms: { A: [null,0,2,2,0,0] } },
+  sus4: { name: "Sus 4",        suf: "sus4", grp: "Triads", iv: [0,5,7], formula: "R · 4 · 5",
+          info: "The 3rd pushed up to the 4th. Creates a gentle tension that loves resolving back to the major chord.",
+          forms: { E: [0,2,2,2,0,0], A: [null,0,2,2,3,0] } },
+  six:  { name: "Sixth",        suf: "6",    grp: "Sixths & sevenths", iv: [0,4,7,9], formula: "R · 3 · 5 · 6",
+          info: "A major triad plus the 6th — sweet, vintage, resolved. The 'happy ending' chord of early jazz and western swing.",
+          forms: { E: [0,2,2,1,2,0], A: [null,0,2,2,2,2] } },
+  m6:   { name: "Minor 6th",    suf: "m6",   grp: "Sixths & sevenths", iv: [0,3,7,9], formula: "R · b3 · 5 · 6",
+          info: "Minor with a bright 6 — noir and bittersweet at once. The Dorian sound in one chord.",
+          forms: { A: [null,0,2,2,1,2] } },
+  dom7: { name: "Dominant 7",   suf: "7",    grp: "Sixths & sevenths", iv: [0,4,7,10], formula: "R · 3 · 5 · b7",
+          info: "Major 3rd + flat 7 = the tritone engine of the blues and of every V chord. 'Dominant' because it dominates the pull back to I.",
+          forms: { E: [0,2,0,1,0,0], A: [null,0,2,0,2,0] } },
+  maj7: { name: "Major 7",      suf: "maj7", grp: "Sixths & sevenths", iv: [0,4,7,11], formula: "R · 3 · 5 · 7",
+          info: "Major triad + natural 7, one fret below the octave. Dreamy, settled, bossa-and-ballad territory.",
+          forms: { E: [0,null,1,1,0,null], A: [null,0,2,1,2,0] } },
+  m7:   { name: "Minor 7",      suf: "m7",   grp: "Sixths & sevenths", iv: [0,3,7,10], formula: "R · b3 · 5 · b7",
+          info: "Minor softened by the b7. The ii-chord workhorse of jazz and the default 'cool' minor sound.",
+          forms: { E: [0,2,0,0,0,0], A: [null,0,2,0,1,0] } },
+  m7b5: { name: "Minor 7 b5",   suf: "m7♭5", grp: "Sixths & sevenths", iv: [0,3,6,10], formula: "R · b3 · b5 · b7",
+          info: "Half-diminished: a dim triad with a m7 on top. The ii chord of every minor key — tension with somewhere to go.",
+          forms: { E: [0,null,0,0,-1,null], A: [null,0,1,0,1,null] } },
+  dim7: { name: "Diminished 7", suf: "°7",   grp: "Sixths & sevenths", iv: [0,3,6,9], formula: "R · b3 · b5 · bb7",
+          info: "All minor 3rds — perfectly symmetrical, so the same shape repeats every 3 frets. (The bb7 reads as a 6 on the board.)",
+          forms: { E: [0,null,-1,0,-1,null], A: [null,0,1,-1,1,-1] } },
+  nine: { name: "Ninth",        suf: "9",    grp: "Extensions (9 · 11 · 13)", iv: [0,4,7,10,2], formula: "R · 3 · 5 · b7 · 9",
+          info: "A dominant 7 with the 9 stacked on top — funk's favourite chord. James Brown ran an empire on this shape.",
+          forms: { A: [null,0,-1,0,0,0] } },
+  maj9: { name: "Major 9",      suf: "maj9", grp: "Extensions (9 · 11 · 13)", iv: [0,4,7,11,2], formula: "R · 3 · 5 · 7 · 9",
+          info: "maj7 lushness plus the 9. As soft-focus as harmony gets before it turns into a film score.",
+          forms: { A: [null,0,-1,1,0,null] } },
+  m9:   { name: "Minor 9",      suf: "m9",   grp: "Extensions (9 · 11 · 13)", iv: [0,3,7,10,2], formula: "R · b3 · 5 · b7 · 9",
+          info: "m7 with the 9 — instantly smooth. The neo-soul default; let it ring and it does the work for you.",
+          forms: { A: [null,0,-2,0,0,null] } },
+  eleven:{ name: "Eleventh",    suf: "11",   grp: "Extensions (9 · 11 · 13)", iv: [0,7,10,2,5], formula: "R · (3) · 5 · b7 · 9 · 11",
+          info: "In practice the 3rd is dropped (it clashes with the 11), leaving a huge suspended wash — one big barre does it.",
+          forms: { A: [null,0,0,0,0,0] } },
+  m11:  { name: "Minor 11",     suf: "m11",  grp: "Extensions (9 · 11 · 13)", iv: [0,3,7,10,2,5], formula: "R · b3 · 5 · b7 · 9 · 11",
+          info: "Every open string of the guitar is in Em11 — the full six-string barre is the chord. Deep, ambiguous, cinematic.",
+          forms: { E: [0,0,0,0,0,0] } },
+  thirteen:{ name: "Thirteenth", suf: "13",  grp: "Extensions (9 · 11 · 13)", iv: [0,4,7,10,2,9], formula: "R · 3 · 5 · b7 · 9 · 11 · 13",
+          info: "The whole scale stacked in 3rds — on guitar you keep R, 3, b7 and 13 and imply the rest. The classiest way to play a dominant.",
+          forms: { E: [0,null,0,1,2,null] } },
+  hendrix:{ name: "7 #9 (Hendrix)", suf: "7♯9", grp: "Extensions (9 · 11 · 13)", iv: [0,4,7,10,3], formula: "R · 3 · 5 · b7 · #9",
+          info: "Major 3rd AND sharp 9 (a disguised minor 3rd) in one chord — the major/minor clash of “Purple Haze”. Filthy in the best way.",
+          forms: { A: [null,0,-1,0,1,null] } },
+};
+
+const CHORD_GROUPS = ["Triads", "Sixths & sevenths", "Extensions (9 · 11 · 13)"];
+
+// Label a chord tone: above a 7th, the stacked notes take compound names.
+const chordDegLabel = (semi, iv) => {
+  const has7 = iv.includes(10) || iv.includes(11);
+  if (has7) {
+    if (semi === 2) return "9";
+    if (semi === 5) return "11";
+    if (semi === 9) return "13";
+    if (semi === 3 && iv.includes(4)) return "#9";
+  }
+  return IV[semi].l;
 };
 
 const TUNINGS = {
@@ -165,7 +257,7 @@ const chordAt = (keyPc, [deg, q]) => {
 
 /* ----------------------------- Fretboard ----------------------------- */
 
-function Fretboard({ tuning, numFrets, leftHanded, interactive, onCell, cellRenderer }) {
+function Fretboard({ tuning, numFrets, leftHanded, interactive, onCell, cellRenderer, bands }) {
   const cellW = 58, rowH = 44, padL = 56, padT = 46, padB = 36, padR = 22;
   const cols = numFrets + 1;
   const boardW = cols * cellW;
@@ -203,6 +295,16 @@ function Fretboard({ tuning, numFrets, leftHanded, interactive, onCell, cellRend
         <rect x={padL} y={padT} width={boardW} height={boardH} rx="6" fill="url(#wood)"
           stroke="rgba(255,255,255,0.07)" />
         <rect x={padL} y={padT} width={boardW} height={boardH / 2} rx="6" fill="url(#sheen)" />
+
+        {/* position highlight bands (e.g. CAGED windows) */}
+        {(bands || []).map(([a, b], i) =>
+          Array.from({ length: b - a + 1 }, (_, k) => a + k)
+            .filter((f) => f >= 0 && f <= numFrets)
+            .map((f) => (
+              <rect key={`bd${i}-${f}`} x={noteX(f) - cellW / 2} y={padT} width={cellW} height={boardH}
+                fill="rgba(124,108,255,0.10)" />
+            ))
+        )}
 
         {Array.from({ length: numFrets }, (_, i) => i + 1).map((f) => (
           <text key={"fn" + f} x={noteX(f)} y={padT - 16} textAnchor="middle"
@@ -282,6 +384,103 @@ function Fretboard({ tuning, numFrets, leftHanded, interactive, onCell, cellRend
   );
 }
 
+/* ----------------------------- Chord diagram ----------------------------- */
+
+const STD_OPEN = [40, 45, 50, 55, 59, 64]; // low E → high E, standard tuning
+
+// Resolve a movable form against a root: returns absolute frets + midis.
+function resolveShape(rootPc, quality, form) {
+  const offs = quality.forms[form];
+  const openPc = form === "E" ? 4 : 9; // low E or A string
+  let n = pc(rootPc - openPc);
+  const minOff = Math.min(...offs.filter((o) => o !== null));
+  if (n + minOff < 0) n += 12;
+  const frets = offs.map((o) => (o === null ? null : o + n));
+  const midis = frets.map((f, i) => (f === null ? null : STD_OPEN[i] + f));
+  return { frets, midis };
+}
+
+function ChordDiagram({ rootPc, quality, form, onStrum }) {
+  const { frets, midis } = resolveShape(rootPc, quality, form);
+  const played = frets.filter((f) => f !== null);
+  const maxF = Math.max(...played);
+  const nutPos = maxF <= 4; // show the nut for open-position shapes
+  const base = nutPos ? 1 : Math.min(...played.filter((f) => f > 0));
+  const rows = 5;
+
+  const colW = 26, headH = 30, rowH = 30, padX = 34, padB = 14;
+  const W = padX * 2 + colW * 5;
+
+  const sx = (i) => padX + i * colW;            // string index 0(lowE)..5
+  const fy = (f) => headH + (f - base + 0.5) * rowH; // fret row centre
+
+  return (
+    <button onClick={() => onStrum(midis.filter((m) => m !== null))}
+      className="rounded-xl border border-white/10 bg-white/[0.03] hover:border-cyan-400/40 transition-colors p-3 text-left"
+      title="Tap to hear it">
+      <div className="flex items-baseline justify-between mb-1 px-1">
+        <span className="display font-bold text-sm text-white">{NOTES[rootPc]}{quality.suf}</span>
+        <span className="mono text-[9px] text-zinc-500">{form} form</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${headH + rowH * rows + padB}`} style={{ width: "100%", height: "auto" }}>
+        {/* open / muted markers */}
+        {frets.map((f, i) => (
+          <text key={"m" + i} x={sx(i)} y={headH - 14} textAnchor="middle"
+            className="mono" fontSize="10"
+            fill={f === null ? "#5d5d6a" : f === 0 ? "#4dd0c5" : "transparent"}>
+            {f === null ? "✕" : "○"}
+          </text>
+        ))}
+        {/* nut or base-fret label */}
+        {nutPos ? (
+          <rect x={sx(0) - 1.5} y={headH - 4} width={colW * 5 + 3} height="4" rx="1" fill="#c9c9d4" />
+        ) : (
+          <text x={6} y={fy(base) + 3.5} textAnchor="start" className="mono" fontSize="10" fill="#7c6cff">
+            {base}fr
+          </text>
+        )}
+        {/* grid */}
+        {Array.from({ length: rows + 1 }, (_, r) => (
+          <line key={"f" + r} x1={sx(0)} y1={headH + r * rowH} x2={sx(5)} y2={headH + r * rowH}
+            stroke="rgba(180,180,200,0.25)" strokeWidth="1" />
+        ))}
+        {Array.from({ length: 6 }, (_, i) => (
+          <line key={"s" + i} x1={sx(i)} y1={headH} x2={sx(i)} y2={headH + rows * rowH}
+            stroke="rgba(210,210,225,0.35)" strokeWidth={1 + (5 - i) * 0.25} />
+        ))}
+        {/* dots */}
+        {frets.map((f, i) => {
+          if (f === null || f === 0) return null;
+          const semi = pc(STD_OPEN[i] + f - rootPc);
+          const info = IV[semi];
+          return (
+            <g key={"d" + i}>
+              <circle cx={sx(i)} cy={fy(f)} r="10.5" fill={info.c}
+                stroke={semi === 0 ? "#fff" : "none"} strokeWidth="1.5"
+                style={{ filter: `drop-shadow(0 0 5px ${info.c}77)` }} />
+              <text x={sx(i)} y={fy(f) + 3.5} textAnchor="middle" className="display"
+                fontSize="9" fontWeight="700" fill={info.k}>
+                {chordDegLabel(semi, quality.iv)}
+              </text>
+            </g>
+          );
+        })}
+        {/* open-string tone labels */}
+        {frets.map((f, i) => {
+          if (f !== 0) return null;
+          const semi = pc(STD_OPEN[i] - rootPc);
+          return (
+            <text key={"o" + i} x={sx(i)} y={headH - 3} textAnchor="middle" className="mono"
+              fontSize="7.5" fill="#4dd0c5">
+              {chordDegLabel(semi, quality.iv)}
+            </text>
+          );
+        })}
+      </svg>
+    </button>
+  );
+}
+
 /* ----------------------------- UI atoms ----------------------------- */
 
 const Panel = ({ children, className = "" }) => (
@@ -323,6 +522,11 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
   const [showAll, setShowAll] = useState(false);
   const [lefty, setLefty] = useState(false);
   const [lastPlayed, setLastPlayed] = useState(null);
+  const [cagedKey, setCagedKey] = useState("all");
+
+  // chords tab
+  const [chordRoot, setChordRoot] = useState(9);
+  const [chordType, setChordType] = useState("dom7");
 
   // progression (hydrated from cloud or local save)
   const [xp, setXp] = useState(init.xp || 0);
@@ -351,6 +555,7 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
   const [grooveKey, setGrooveKey] = useState("shuffle");
 
   const synthRef = useRef(null);
+  const strumRef = useRef(null);
   const startedRef = useRef(false);
   const prevLevel = useRef(1 + Math.floor((init.xp || 0) / 120));
   const timers = useRef([]);
@@ -403,6 +608,21 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
     await ensureAudio();
     try { synthRef.current.triggerAttack(midiName(m), Tone.now()); } catch (e) {}
   }, [ensureAudio]);
+
+  const strumChord = useCallback(async (midis) => {
+    await Tone.start();
+    if (!strumRef.current) {
+      strumRef.current = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: "triangle" },
+        envelope: { attack: 0.004, decay: 1.2, sustain: 0, release: 0.3 },
+      }).toDestination();
+      strumRef.current.volume.value = -8;
+    }
+    const now = Tone.now();
+    midis.forEach((m, i) => {
+      try { strumRef.current.triggerAttackRelease(midiName(m), 1.4, now + i * 0.045); } catch (e) {}
+    });
+  }, []);
 
   const playScale = useCallback(async () => {
     await ensureAudio();
@@ -600,15 +820,32 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
       ["kick", "snare", "snBody", "hat", "bass", "comp", "bus", "verb", "limiter"].forEach((k) => {
         try { J[k]?.dispose(); } catch (e) {}
       });
+      try { strumRef.current?.dispose(); } catch (e) {}
     };
   }, []);
 
   /* ---------------- explore renderer ---------------- */
+  // CAGED windows: fret ranges (repeating every 12) for the selected shape
+  const cagedWindows = (() => {
+    if (cagedKey === "all") return null;
+    const shape = CAGED_POS[cagedKey];
+    const r = pc(rootPc - pc(tuning[5])); // fret of the root on the lowest string
+    const start = ((r + shape.off) % 12 + 12) % 12;
+    const wins = [];
+    for (let s = start; s <= numFrets; s += 12) wins.push([s, Math.min(s + shape.w, numFrets)]);
+    return wins;
+  })();
+  const inCaged = (f) => !cagedWindows || cagedWindows.some(([a, b]) => f >= a && f <= b);
+
   const exploreRenderer = useCallback((s, f, midi) => {
     const semi = pc(midi - rootPc);
     const inSet = activeIv.includes(semi);
     const isLast = lastPlayed && lastPlayed.s === s && lastPlayed.f === f;
     if (inSet) {
+      if (!inCaged(f)) {
+        // outside the chosen CAGED window: keep it visible but ghosted
+        return { fill: "#1d1d24", ink: "#55555f", label: IV[semi].l, faint: true, glow: isLast };
+      }
       const info = IV[semi];
       let label = info.l;
       if (displayMode === "notes") label = NOTES[pc(midi)];
@@ -620,7 +857,8 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
       return { fill: "#1d1d24", ink: "#5d5d6a", label: NOTES[pc(midi)], faint: true, glow: isLast };
     if (isLast) return { fill: "#2a2a33", ink: "#9a9aa6", label: NOTES[pc(midi)], faint: true, glow: true };
     return null;
-  }, [rootPc, activeIv, viewMode, displayMode, showAll, lastPlayed]);
+    // eslint-disable-next-line
+  }, [rootPc, activeIv, viewMode, displayMode, showAll, lastPlayed, cagedKey, numFrets, tuningKey]);
 
   const handleExploreCell = useCallback((s, f, midi) => {
     playMidi(midi);
@@ -964,6 +1202,7 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
         <div className="flex gap-2 mb-5 flex-wrap">
           {[
             { v: "explore", l: "Explore", icon: Guitar },
+            { v: "chords", l: "Chords", icon: LayoutGrid },
             { v: "jam", l: "Jam", icon: Radio },
             { v: "train", l: "Train", icon: Target },
             { v: "theory", l: "Theory", icon: BookOpen },
@@ -1062,6 +1301,13 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
                     <Seg value={numFrets} onChange={setNumFrets}
                       options={FRET_OPTS.map((f) => ({ v: f, l: String(f) }))} />
                   </div>
+                  <div>
+                    <div className="mono text-[10px] text-zinc-500 mb-1.5">CAGED POSITION</div>
+                    <Seg value={cagedKey} onChange={setCagedKey} options={[
+                      { v: "all", l: "Full neck" },
+                      ...Object.keys(CAGED_POS).map((k) => ({ v: k, l: k })),
+                    ]} />
+                  </div>
                   <button onClick={() => setShowAll((v) => !v)}
                     className={`mono text-xs px-3 py-2.5 rounded-lg border transition-colors ${
                       showAll ? "border-cyan-400/40 text-cyan-300 bg-cyan-400/10" : "border-white/10 text-zinc-400"
@@ -1082,9 +1328,12 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
 
               <Panel className="p-2 sm:p-4">
                 <Fretboard tuning={tuning} numFrets={numFrets} leftHanded={lefty}
-                  interactive onCell={handleExploreCell} cellRenderer={exploreRenderer} />
+                  interactive onCell={handleExploreCell} cellRenderer={exploreRenderer}
+                  bands={cagedWindows || []} />
                 <p className="mono text-[10px] text-zinc-500 mt-2 px-2 pb-2 sm:px-0 sm:pb-0">
-                  Tap any fret to hear it · root in red
+                  {cagedKey === "all"
+                    ? "Tap any fret to hear it · root in red"
+                    : `${cagedKey} shape · frets ${cagedWindows.map(([a, b]) => `${a}–${b}`).join(" & ")} · roots on the ${CAGED_POS[cagedKey].roots} · notes outside the window are ghosted`}
                 </p>
               </Panel>
 
@@ -1148,6 +1397,91 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
                   {viewMode === "arp"
                     ? <>Play the arpeggio slowly on one string pair, then jump to the <span className="text-blue-400 font-semibold">same tones</span> in the next position. That's voice leading in miniature.</>
                     : <>Find every <span className="text-red-400 font-semibold">root</span> first, then the <span className="text-emerald-400 font-semibold">5th</span> — those two anchor every position. Solo by targeting them on strong beats.</>}
+                </p>
+              </div>
+            </Panel>
+          </div>
+        )}
+
+        {/* ===================== CHORDS ===================== */}
+        {tab === "chords" && (
+          <div className="bs-up grid lg:grid-cols-[1fr_300px] gap-4">
+            <div className="space-y-4 min-w-0">
+              <Panel className="p-3 sm:p-4">
+                <div className="flex flex-wrap gap-x-6 gap-y-3 items-end">
+                  <div className="min-w-0 max-w-full">
+                    <div className="mono text-[10px] text-zinc-500 mb-1.5">ROOT</div>
+                    <div className="flex flex-wrap gap-1">
+                      {NOTES.map((n, i) => (
+                        <button key={n} onClick={() => setChordRoot(i)}
+                          className={`mono text-xs w-9 h-9 rounded-lg transition-all ${
+                            chordRoot === i ? "text-black font-bold" : "bg-white/5 text-zinc-400 hover:bg-white/10"
+                          }`}
+                          style={chordRoot === i ? { background: "#ff2e4d" } : {}}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="mono text-[10px] text-zinc-500 mb-1.5">CHORD TYPE</div>
+                    <select value={chordType} onChange={(e) => setChordType(e.target.value)}
+                      className="mono text-xs bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-white outline-none">
+                      {CHORD_GROUPS.map((g) => (
+                        <optgroup key={g} label={g}>
+                          {Object.entries(CHORD_LIB).filter(([, v]) => v.grp === g).map(([k, v]) => (
+                            <option key={k} value={k}>{v.name}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </Panel>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {Object.keys(CHORD_LIB[chordType].forms).map((form) => (
+                  <ChordDiagram key={form} rootPc={chordRoot} quality={CHORD_LIB[chordType]}
+                    form={form} onStrum={strumChord} />
+                ))}
+              </div>
+              <p className="mono text-[10px] text-zinc-500">
+                Tap a diagram to hear it · standard tuning · the E and A forms are the CAGED barre
+                shapes — slide them anywhere on the neck
+              </p>
+            </div>
+
+            {/* chord profile */}
+            <Panel className="p-5 h-fit">
+              <div className="flex items-center gap-2 text-cyan-300 mb-1">
+                <LayoutGrid size={15} />
+                <span className="mono text-[10px] tracking-widest">CHORD PROFILE</span>
+              </div>
+              <h2 className="display font-extrabold text-2xl leading-tight">
+                {NOTES[chordRoot]}{CHORD_LIB[chordType].suf}
+              </h2>
+              <p className="mono text-[11px] text-zinc-500 mb-4">{CHORD_LIB[chordType].name}</p>
+
+              {[
+                ["Formula", CHORD_LIB[chordType].formula],
+                ["Notes", CHORD_LIB[chordType].iv.map((i) => NOTES[pc(chordRoot + i)]).join("  ·  ")],
+                ["Sound & use", CHORD_LIB[chordType].info],
+              ].map(([k, v]) => (
+                <div key={k} className="py-2.5 border-b border-white/8 last:border-0">
+                  <div className="mono text-[10px] text-zinc-500">{k.toUpperCase()}</div>
+                  <div className={`mt-0.5 ${k !== "Sound & use" ? "mono text-sm text-white" : "text-sm text-zinc-300"}`}>{v}</div>
+                </div>
+              ))}
+
+              <div className="mt-4 rounded-xl p-3 bg-white/[0.03] border border-white/8">
+                <div className="flex items-center gap-1.5 text-zinc-400 mb-1">
+                  <Sparkles size={12} />
+                  <span className="mono text-[10px]">DOT COLOURS</span>
+                </div>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Same colour code as the fretboard: <span className="text-red-400 font-semibold">root in red</span>,
+                  every other dot labelled with its interval. Extended tones show their compound
+                  names — 9, 11, 13 — see the Theory tab for why.
                 </p>
               </div>
             </Panel>
@@ -1576,6 +1910,83 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
                 which is why V7 pulls so hard back to I. The blues cheerfully breaks this rule and plays
                 dom7 on <em>everything</em>. That rule-break is the blues sound.
               </p>
+            </Panel>
+
+            <Panel className="p-5">
+              <div className="mono text-[10px] tracking-widest text-cyan-300 mb-1">THE FOUR CHORD FAMILIES</div>
+              <h2 className="display font-extrabold text-2xl leading-tight mb-3">Major · minor · diminished · dominant</h2>
+              <p className="text-sm text-zinc-300 leading-relaxed mb-4">
+                Every chord you'll ever meet is one of four characters, defined by just two notes —
+                the 3rd and the 7th. The root names the chord; these two give it its personality:
+              </p>
+              <div className="space-y-2.5 mb-4">
+                {[
+                  ["Major", "3 + 7", "At rest, bright, home. Nothing needs to move.", "maj7"],
+                  ["Minor", "b3 + b7", "At rest but shaded. The b3 does all the emotional work.", "m7"],
+                  ["Dominant", "3 + b7", "The engine. Major 3rd and flat 7 form a tritone that demands resolution — and the blues runs on refusing to resolve it.", "dom7"],
+                  ["Diminished", "b3 + b5", "Pure tension, no home of its own. Lives between chords, pointing at the next one.", "dim7"],
+                ].map(([name, sig, desc, key]) => (
+                  <div key={name} className="flex items-center justify-between gap-3 rounded-xl px-4 py-3 border border-white/8 bg-white/[0.03] flex-wrap">
+                    <div className="min-w-28">
+                      <div className="text-sm text-white font-semibold">{name}</div>
+                      <div className="mono text-[10px] text-cyan-300">{sig}</div>
+                    </div>
+                    <p className="text-xs text-zinc-400 flex-1 min-w-48">{desc}</p>
+                    <button onClick={() => { setChordType(key); setTab("chords"); }}
+                      className="mono text-[10px] px-2.5 py-1.5 rounded-lg border border-cyan-400/40 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20 transition-colors whitespace-nowrap">
+                      Shapes →
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mono text-[10px] tracking-widest text-cyan-300 mb-1 mt-6">BEYOND THE OCTAVE — 9THS, 11THS, 13THS</div>
+              <h3 className="display font-bold text-lg mb-2">Keep stacking 3rds and the numbers keep counting</h3>
+              <p className="text-sm text-zinc-300 leading-relaxed mb-3">
+                Chords are built by stacking every other scale note: 1-3-5 is a triad, add the next
+                stack and you get the 7th. Keep going <em>past the octave</em> and the same scale notes
+                come back with new numbers — the 2nd an octave up is called the <span className="text-white">9</span>,
+                the 4th becomes the <span className="text-white">11</span>, the 6th becomes the <span className="text-white">13</span>:
+              </p>
+              <div className="overflow-x-auto mb-3">
+                <div className="flex gap-1.5" style={{ minWidth: 480 }}>
+                  {[["1","R"],["3","3rd"],["5","5th"],["7","7th"],["9","= 2 + oct"],["11","= 4 + oct"],["13","= 6 + oct"]].map(([n, sub], i) => (
+                    <div key={n} className={`flex-1 rounded-lg py-2 text-center border ${i >= 4 ? "border-cyan-400/30 bg-cyan-400/5" : "border-white/8 bg-white/[0.03]"}`}>
+                      <div className="display font-bold text-base text-white">{n}</div>
+                      <div className="mono text-[9px] text-zinc-500">{sub}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <ul className="text-xs text-zinc-400 leading-relaxed space-y-2">
+                <li><span className="text-white font-semibold">The 7th is the gateway.</span> A chord only gets extension names when a 7th is present: C-E-G-D is C<span className="mono">add9</span>, but C-E-G-Bb-D is C<span className="mono">9</span>. Each number implies everything below it — a 13 chord theoretically contains the 7, 9 and 11 too.</li>
+                <li><span className="text-white font-semibold">Guitarists cheat, correctly.</span> Six strings can't hold seven notes, so drop the 5th first (adds nothing), then the root if a bassist has it, then the 11. A great 13th chord is often just 3, b7, 9, 13.</li>
+                <li><span className="text-white font-semibold">Extensions follow the family.</span> Dominant chords take them all plus alterations (b9, #9, #11, b13 — hence the Hendrix 7#9). Major chords love 9 and #11 but the plain 11 clashes with their 3rd. Minor chords take 9, 11 and 13 freely.</li>
+                <li><span className="text-white font-semibold">Rule of thumb:</span> extensions add colour, not function. A C13 still <em>does</em> the job of C7 — it just wears a better suit. Try them in the Chords tab.</li>
+              </ul>
+            </Panel>
+
+            <Panel className="p-5">
+              <div className="mono text-[10px] tracking-widest text-cyan-300 mb-1">THE CAGED SYSTEM</div>
+              <h2 className="display font-extrabold text-2xl leading-tight mb-3">Five shapes tile the whole neck</h2>
+              <p className="text-sm text-zinc-300 leading-relaxed mb-3">
+                The open chords C, A, G, E and D are more than beginner chords — they're the five
+                movable shapes the entire fretboard is built from. For any key, the five shapes appear
+                up the neck in that fixed order (C→A→G→E→D, then repeating), each one overlapping the
+                next by a fret or two. Learn a scale inside each window and you know it <em>everywhere</em>.
+              </p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {Object.entries(CAGED_POS).map(([k, v]) => (
+                  <div key={k} className="rounded-lg px-3 py-2 border border-white/8 bg-white/[0.03]">
+                    <span className="display font-bold text-sm text-white mr-2">{k} shape</span>
+                    <span className="mono text-[10px] text-zinc-500">roots on {v.roots}</span>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => { setCagedKey("E"); setTab("explore"); }}
+                className="mono text-[10px] px-3 py-2 rounded-lg border border-cyan-400/40 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20 transition-colors">
+                Try it — E shape on the fretboard →
+              </button>
             </Panel>
 
             <Panel className="p-5">
