@@ -3,7 +3,7 @@ import * as Tone from "tone";
 import {
   Music, Zap, Target, Play, Square, Volume2, Award, Flame, RotateCcw,
   Check, X, Activity, Sparkles, Brain, Guitar, Ear, ChevronRight,
-  Radio, Crosshair, Layers, User, LogOut
+  Radio, Crosshair, Layers, User, LogOut, BookOpen
 } from "lucide-react";
 import { supabase, isConfigured } from "./lib/supabase";
 import Auth from "./Auth.jsx";
@@ -31,17 +31,38 @@ const IV = [
 ];
 
 const SCALES = {
-  major:      { name: "Major",            tag: "Ionian",    iv: [0,2,4,5,7,9,11], char: "Bright · resolved · uplifting",   gen: "Pop, country, classical", song: "“Ode to Joy”, “Let It Be”" },
-  minor:      { name: "Natural Minor",    tag: "Aeolian",   iv: [0,2,3,5,7,8,10], char: "Dark · introspective · serious", gen: "Rock, metal, film score", song: "“Stairway” verse, “Losing My Religion”" },
-  majPent:    { name: "Major Pentatonic", tag: "5-note",    iv: [0,2,4,7,9],      char: "Open · sweet · no wrong notes",  gen: "Country, rock, folk",     song: "“My Girl”, “Sweet Home Alabama”" },
-  minPent:    { name: "Minor Pentatonic", tag: "5-note",    iv: [0,3,5,7,10],     char: "The rock/blues workhorse",       gen: "Blues, rock, soul",       song: "Most rock solos ever" },
-  blues:      { name: "Blues Scale",      tag: "minor + b5",iv: [0,3,5,6,7,10],   char: "Gritty · vocal · the b5 cry",    gen: "Blues, rock, R&B",        song: "Endless 12-bar jams" },
-  dorian:     { name: "Dorian",           tag: "mode II",   iv: [0,2,3,5,7,9,10], char: "Minor but hopeful — natural 6",  gen: "Funk, jazz, modal rock",  song: "“So What”, “Oye Como Va”" },
-  mixo:       { name: "Mixolydian",       tag: "mode V",    iv: [0,2,4,5,7,9,10], char: "Major with a bluesy b7",         gen: "Blues-rock, funk, jam",   song: "“Sweet Child o’ Mine” riff" },
-  lydian:     { name: "Lydian",           tag: "mode IV",   iv: [0,2,4,6,7,9,11], char: "Dreamy · floating · the #4",     gen: "Film, fusion, prog",      song: "“The Simpsons” theme" },
-  phrygian:   { name: "Phrygian",         tag: "mode III",  iv: [0,1,3,5,7,8,10], char: "Spanish · exotic · tense b2",    gen: "Flamenco, metal",         song: "Flamenco, thrash riffs" },
-  harmMinor:  { name: "Harmonic Minor",   tag: "minor + 7", iv: [0,2,3,5,7,8,11], char: "Dramatic · neoclassical leap",   gen: "Classical, metal, gypsy", song: "Neoclassical shred" },
+  /* --- major scale modes --- */
+  major:      { name: "Major",            tag: "Ionian · mode I",   grp: "Major scale modes", iv: [0,2,4,5,7,9,11],  char: "Bright · resolved · uplifting",     gen: "Pop, country, classical", song: "“Ode to Joy”, “Let It Be”" },
+  dorian:     { name: "Dorian",           tag: "mode II",           grp: "Major scale modes", iv: [0,2,3,5,7,9,10],  char: "Minor but hopeful — natural 6",     gen: "Funk, jazz, modal rock",  song: "“So What”, “Oye Como Va”" },
+  phrygian:   { name: "Phrygian",         tag: "mode III",          grp: "Major scale modes", iv: [0,1,3,5,7,8,10],  char: "Spanish · exotic · tense b2",       gen: "Flamenco, metal",         song: "Flamenco, thrash riffs" },
+  lydian:     { name: "Lydian",           tag: "mode IV",           grp: "Major scale modes", iv: [0,2,4,6,7,9,11],  char: "Dreamy · floating · the #4",        gen: "Film, fusion, prog",      song: "“The Simpsons” theme" },
+  mixo:       { name: "Mixolydian",       tag: "mode V",            grp: "Major scale modes", iv: [0,2,4,5,7,9,10],  char: "Major with a bluesy b7",            gen: "Blues-rock, funk, jam",   song: "“Sweet Child o’ Mine” riff" },
+  minor:      { name: "Natural Minor",    tag: "Aeolian · mode VI", grp: "Major scale modes", iv: [0,2,3,5,7,8,10],  char: "Dark · introspective · serious",    gen: "Rock, metal, film score", song: "“Stairway” verse, “Losing My Religion”" },
+  locrian:    { name: "Locrian",          tag: "mode VII",          grp: "Major scale modes", iv: [0,1,3,5,6,8,10],  char: "Unstable · dissonant · b5 root",    gen: "Metal, jazz over m7b5",   song: "“YYZ” intro vibe, m7♭5 lines" },
+  /* --- minor & jazz family --- */
+  harmMinor:  { name: "Harmonic Minor",   tag: "minor + natural 7", grp: "Minor & jazz",      iv: [0,2,3,5,7,8,11],  char: "Dramatic · neoclassical leap",      gen: "Classical, metal, gypsy", song: "Neoclassical shred" },
+  phrygDom:   { name: "Phrygian Dominant",tag: "harm. minor mode V",grp: "Minor & jazz",      iv: [0,1,4,5,7,8,10],  char: "Flamenco fire · exotic dominant",   gen: "Flamenco, metal, klezmer",song: "“Misirlou”, “Hava Nagila”" },
+  melMinor:   { name: "Melodic Minor",    tag: "minor + nat. 6 & 7",grp: "Minor & jazz",      iv: [0,2,3,5,7,9,11],  char: "Minor below · major above",         gen: "Jazz, fusion, film",      song: "Jazz-minor lines everywhere" },
+  lydDom:     { name: "Lydian Dominant",  tag: "mel. minor mode IV",grp: "Minor & jazz",      iv: [0,2,4,6,7,9,10],  char: "Cheeky #4 over a 7th chord",        gen: "Fusion, Simpsons-jazz",   song: "Trane/Scofield over 7#11" },
+  altered:    { name: "Altered Scale",    tag: "mel. minor mode VII",grp: "Minor & jazz",     iv: [0,1,3,4,6,8,10],  char: "Maximum tension — every alt note",  gen: "Jazz V7alt chords",       song: "Bebop turnaround tension" },
+  /* --- pentatonic & blues --- */
+  majPent:    { name: "Major Pentatonic", tag: "5-note",            grp: "Pentatonic & blues",iv: [0,2,4,7,9],       char: "Open · sweet · no wrong notes",     gen: "Country, rock, folk",     song: "“My Girl”, “Sweet Home Alabama”" },
+  minPent:    { name: "Minor Pentatonic", tag: "5-note",            grp: "Pentatonic & blues",iv: [0,3,5,7,10],      char: "The rock/blues workhorse",          gen: "Blues, rock, soul",       song: "Most rock solos ever" },
+  blues:      { name: "Blues Scale",      tag: "minor pent + b5",   grp: "Pentatonic & blues",iv: [0,3,5,6,7,10],    char: "Gritty · vocal · the b5 cry",       gen: "Blues, rock, R&B",        song: "Endless 12-bar jams" },
+  majBlues:   { name: "Major Blues",      tag: "major pent + b3",   grp: "Pentatonic & blues",iv: [0,2,3,4,7,9],     char: "Sweet with a sly blue note",        gen: "Country, western swing",  song: "BB King's “sweet” side" },
+  egyptian:   { name: "Egyptian / Sus",   tag: "pentatonic mode",   grp: "Pentatonic & blues",iv: [0,2,5,7,10],      char: "Ancient · open · no 3rd at all",    gen: "World, modal jams",       song: "Desert-flavoured riffs" },
+  /* --- symmetric --- */
+  wholeTone:  { name: "Whole Tone",       tag: "6-note symmetric",  grp: "Symmetric",         iv: [0,2,4,6,8,10],    char: "Weightless · dream sequence",       gen: "Impressionism, cartoons", song: "Debussy, dream cutaways" },
+  dimWH:      { name: "Diminished (W-H)", tag: "8-note symmetric",  grp: "Symmetric",         iv: [0,2,3,5,6,8,9,11],char: "Spiralling tension · repeats in m3", gen: "Jazz, metal, film",      song: "Over dim7 chords" },
+  dimHW:      { name: "Diminished (H-W)", tag: "8-note symmetric",  grp: "Symmetric",         iv: [0,1,3,4,6,7,9,10],char: "The altered-dominant workhorse",     gen: "Jazz V7b9, fusion",      song: "V7♭9 licks" },
+  /* --- exotic --- */
+  dblHarm:    { name: "Double Harmonic",  tag: "Byzantine",         grp: "Exotic",            iv: [0,1,4,5,7,8,11],  char: "Two exotic leaps · instant east",   gen: "Middle-Eastern, surf",    song: "“Misirlou” full scale" },
+  hungMinor:  { name: "Hungarian Minor",  tag: "gypsy minor",       grp: "Exotic",            iv: [0,2,3,6,7,8,11],  char: "Harmonic minor with a #4 twist",    gen: "Gypsy jazz, classical",   song: "Liszt, Django colour" },
+  hirajoshi:  { name: "Hirajoshi",        tag: "Japanese 5-note",   grp: "Exotic",            iv: [0,2,3,7,8],       char: "Koto strings · stark beauty",       gen: "Japanese trad, ambient",  song: "Koto & shamisen lines" },
+  inSen:      { name: "In Sen",           tag: "Japanese 5-note",   grp: "Exotic",            iv: [0,1,5,7,10],      char: "Floating b2 · zen tension",         gen: "Japanese trad, film",     song: "Shakuhachi moods" },
 };
+
+const SCALE_GROUPS = ["Major scale modes", "Minor & jazz", "Pentatonic & blues", "Symmetric", "Exotic"];
 
 const ARPS = {
   maj:   { name: "Major Triad",   suf: "",     iv: [0,4,7],     tip: "The 3 defines it — land there to sound major." },
@@ -72,15 +93,75 @@ const midiName = (m) => NOTES[pc(m)] + (Math.floor(m / 12) - 1);
 const rand = (n) => Math.floor(Math.random() * n);
 
 /* --------------------------- Jam data --------------------------- */
-// 12-bar shuffle blues in A with a quick-turnaround to E7 in bar 12
-const JAM_CHORDS = {
-  A7: { name: "A7", rootPc: 9, bass: 33, tones: "A · C# · E · G",  scale: "A Mixolydian / A Blues", third: "C#" },
-  D7: { name: "D7", rootPc: 2, bass: 38, tones: "D · F# · A · C",  scale: "D Mixolydian (A Blues still works)", third: "F#" },
-  E7: { name: "E7", rootPc: 4, bass: 40, tones: "E · G# · B · D",  scale: "E Mixolydian", third: "G#" },
+// Progressions are written as [degree-offset-in-semitones, quality] so they
+// transpose to any key. Qualities carry chord tones + a scale suggestion.
+const CHORD_QUALITIES = {
+  "7":    { suf: "7",    iv: [0,4,7,10], scaleHint: "Mixolydian" },
+  m7:     { suf: "m7",   iv: [0,3,7,10], scaleHint: "Dorian" },
+  maj7:   { suf: "maj7", iv: [0,4,7,11], scaleHint: "Major (Ionian)" },
+  maj:    { suf: "",     iv: [0,4,7],    scaleHint: "Major pentatonic" },
+  min:    { suf: "m",    iv: [0,3,7],    scaleHint: "Minor pentatonic" },
 };
-const DOM7 = [0, 4, 7, 10];
-const PROGRESSION = ["A7","A7","A7","A7","D7","D7","A7","A7","E7","D7","A7","E7"];
-const BLUES_A_PCS = SCALES.blues.iv.map((i) => pc(9 + i)); // A blues safe notes
+
+const PROGRESSIONS = {
+  blues12: {
+    name: "12-Bar Blues", nums: "1 · 4 · 5", safe: "blues",
+    bars: [[0,"7"],[0,"7"],[0,"7"],[0,"7"],[5,"7"],[5,"7"],[0,"7"],[0,"7"],[7,"7"],[5,"7"],[0,"7"],[7,"7"]],
+    tip: "The form every jam night assumes you know. Land each chord's 3rd as it changes.",
+  },
+  quick12: {
+    name: "Quick-Change Blues", nums: "1 · 4 · 5 (IV in bar 2)", safe: "blues",
+    bars: [[0,"7"],[5,"7"],[0,"7"],[0,"7"],[5,"7"],[5,"7"],[0,"7"],[0,"7"],[7,"7"],[5,"7"],[0,"7"],[7,"7"]],
+    tip: "Same blues, but bar 2 jumps early to the IV — keeps the first line moving.",
+  },
+  minor12: {
+    name: "Minor Blues", nums: "1m · 4m · b6 · 5", safe: "minPent",
+    bars: [[0,"m7"],[0,"m7"],[0,"m7"],[0,"m7"],[5,"m7"],[5,"m7"],[0,"m7"],[0,"m7"],[8,"maj7"],[7,"7"],[0,"m7"],[7,"7"]],
+    tip: "“The Thrill Is Gone” territory. The bVI–V turnaround is the emotional peak.",
+  },
+  oneFourFive: {
+    name: "I – IV – V", nums: "1 · 4 · 5", safe: "majPent",
+    bars: [[0,"maj"],[5,"maj"],[7,"maj"],[0,"maj"]],
+    tip: "Three chords, ten thousand songs. Major pentatonic sails over all of it.",
+  },
+  doowop: {
+    name: "I – vi – IV – V ('50s)", nums: "1 · 6m · 4 · 5", safe: "majPent",
+    bars: [[0,"maj"],[9,"min"],[5,"maj"],[7,"7"]],
+    tip: "“Stand By Me”. The vi chord is the moody one — its b3 is your money note.",
+  },
+  twoFiveOne: {
+    name: "ii – V – I (jazz)", nums: "2m · 5 · 1", safe: "major",
+    bars: [[2,"m7"],[7,"7"],[0,"maj7"],[0,"maj7"]],
+    tip: "The jazz cell. One major scale covers all three chords — target the 3rds & 7ths.",
+  },
+};
+
+// Grooves define the feel: subdivision, steps per bar, swing, time signature.
+const GROOVES = {
+  shuffle: { name: "Shuffle",        sig: "4/4 swung", sub: "8n",  steps: 8,  swing: 0.55 },
+  rock:    { name: "Straight Rock",  sig: "4/4",       sub: "8n",  steps: 8,  swing: 0 },
+  train:   { name: "Train Beat",     sig: "4/4",       sub: "16n", steps: 16, swing: 0 },
+  slow128: { name: "Slow Blues",     sig: "12/8",      sub: "8t",  steps: 12, swing: 0 },
+  waltz:   { name: "Waltz",          sig: "3/4",       sub: "8n",  steps: 6,  swing: 0 },
+};
+
+const chordAt = (keyPc, [deg, q]) => {
+  const rootP = pc(keyPc + deg);
+  const qual = CHORD_QUALITIES[q];
+  const third = qual.iv.includes(4) ? 4 : 3;
+  const seventh = qual.iv.length > 3 ? qual.iv[3] : 7;
+  return {
+    name: NOTES[rootP] + qual.suf,
+    rootPc: rootP,
+    iv: qual.iv,
+    scaleHint: qual.scaleHint,
+    third,
+    thirdName: NOTES[pc(rootP + third)],
+    tones: qual.iv.map((i) => NOTES[pc(rootP + i)]).join(" · "),
+    bass: 28 + pc(rootP - 4), // E1..D#2 register
+    seventh,
+  };
+};
 
 /* ----------------------------- Fretboard ----------------------------- */
 
@@ -100,9 +181,13 @@ function Fretboard({ tuning, numFrets, leftHanded, interactive, onCell, cellRend
   const wires = [];
   for (let k = 1; k < cols; k++) wires.push(padL + k * cellW);
 
+  // Scale to fill the panel on desktop; keep a minimum width on phones so
+  // note dots stay tappable, with horizontal scroll taking up the slack.
+  const minW = Math.min(W, Math.max(560, numFrets * 46));
   return (
     <div className="overflow-x-auto overflow-y-hidden -mx-1 px-1" style={{ WebkitOverflowScrolling: "touch" }}>
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ minWidth: W, touchAction: "pan-x" }}>
+      <svg viewBox={`0 0 ${W} ${H}`}
+        style={{ width: "100%", height: "auto", minWidth: minW, display: "block", touchAction: "pan-x" }}>
         <defs>
           <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#1c1c25" />
@@ -171,19 +256,19 @@ function Fretboard({ tuning, numFrets, leftHanded, interactive, onCell, cellRend
                 {r && (
                   <g style={{ pointerEvents: "none" }}>
                     {r.glow && (
-                      <circle cx={cx} cy={cy} r="17.5" fill="none" stroke={r.fill}
+                      <circle cx={cx} cy={cy} r="19.5" fill="none" stroke={r.fill}
                         strokeWidth="2.5" opacity="0.9" className="bs-pulse" />
                     )}
                     {r.ring && (
-                      <circle cx={cx} cy={cy} r="18" fill="none"
+                      <circle cx={cx} cy={cy} r="20" fill="none"
                         stroke={r.fill} strokeWidth="1.5" opacity="0.55" />
                     )}
-                    <circle cx={cx} cy={cy} r={r.faint ? 9 : 14} fill={r.fill}
-                      opacity={r.faint ? 0.5 : 1}
-                      style={r.faint ? {} : { filter: `drop-shadow(0 0 8px ${r.fill}88)` }} />
-                    <text x={cx} y={cy + (r.faint ? 3 : 4)} textAnchor="middle"
+                    <circle cx={cx} cy={cy} r={r.faint ? 10.5 : 16} fill={r.fill}
+                      opacity={r.faint ? 0.55 : 1}
+                      style={r.faint ? {} : { filter: `drop-shadow(0 0 9px ${r.fill}99)` }} />
+                    <text x={cx} y={cy + (r.faint ? 3.5 : 4.5)} textAnchor="middle"
                       className={r.faint ? "mono" : "display"}
-                      fontSize={r.faint ? 8.5 : 11} fontWeight="700" fill={r.ink}>
+                      fontSize={r.faint ? 9.5 : 12.5} fontWeight="700" fill={r.ink}>
                       {r.label}
                     </text>
                   </g>
@@ -261,6 +346,9 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
   const [bpm, setBpm] = useState(96);
   const [jamBar, setJamBar] = useState(0);
   const [showSafe, setShowSafe] = useState(true);
+  const [jamKey, setJamKey] = useState(9); // pitch class, default A
+  const [progKey, setProgKey] = useState("blues12");
+  const [grooveKey, setGrooveKey] = useState("shuffle");
 
   const synthRef = useRef(null);
   const startedRef = useRef(false);
@@ -328,79 +416,151 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
   }, [ensureAudio, rootPc, activeIv]);
 
   /* ---------------- jam engine ---------------- */
+  // live jam config readable from inside the scheduled step (avoids stale closures)
+  const jamCfg = useRef(null);
+  jamCfg.current = { keyPc: jamKey, prog: PROGRESSIONS[progKey], groove: GROOVES[grooveKey], grooveId: grooveKey };
+
   const buildJamSynths = useCallback(() => {
     if (jam.current.built) return;
-    const kick = new Tone.MembraneSynth({ octaves: 6, pitchDecay: 0.04 }).toDestination();
-    kick.volume.value = -5;
+    // master bus: glue compression → a touch of room → limiter
+    const limiter = new Tone.Limiter(-1).toDestination();
+    const verb = new Tone.Reverb({ decay: 1.5, wet: 0.14 }).connect(limiter);
+    const bus = new Tone.Compressor({ threshold: -20, ratio: 3, attack: 0.01, release: 0.16 }).connect(verb);
 
-    const snBp = new Tone.Filter(1800, "bandpass").toDestination();
+    const kick = new Tone.MembraneSynth({
+      octaves: 5, pitchDecay: 0.05,
+      envelope: { attack: 0.001, decay: 0.32, sustain: 0.01, release: 0.4 },
+    }).connect(bus);
+    kick.volume.value = -4;
+
+    // snare = noise crack + tuned body thump, layered
+    const snBp = new Tone.Filter(2200, "bandpass").connect(bus);
     const snare = new Tone.NoiseSynth({
-      noise: { type: "pink" }, envelope: { attack: 0.001, decay: 0.14, sustain: 0 },
+      noise: { type: "pink" }, envelope: { attack: 0.001, decay: 0.16, sustain: 0 },
     }).connect(snBp);
-    snare.volume.value = -9;
-
-    const hatHp = new Tone.Filter(8000, "highpass").toDestination();
-    const hat = new Tone.NoiseSynth({
-      noise: { type: "white" }, envelope: { attack: 0.001, decay: 0.04, sustain: 0 },
-    }).connect(hatHp);
-    hat.volume.value = -19;
-
-    const bass = new Tone.MonoSynth({
-      oscillator: { type: "square" },
-      envelope: { attack: 0.004, decay: 0.25, sustain: 0.35, release: 0.15 },
-      filterEnvelope: { attack: 0.002, decay: 0.15, sustain: 0.4, baseFrequency: 120, octaves: 2.2 },
-    }).toDestination();
-    bass.volume.value = -9;
-
-    const comp = new Tone.PolySynth(Tone.Synth, {
+    snare.volume.value = -8;
+    const snBody = new Tone.Synth({
       oscillator: { type: "triangle" },
-      envelope: { attack: 0.005, decay: 0.18, sustain: 0.04, release: 0.2 },
-    }).toDestination();
-    comp.volume.value = -14;
+      envelope: { attack: 0.001, decay: 0.09, sustain: 0 },
+    }).connect(bus);
+    snBody.volume.value = -14;
 
-    jam.current = { ...jam.current, built: true, kick, snare, hat, bass, comp };
+    const hatHp = new Tone.Filter(9000, "highpass").connect(bus);
+    const hat = new Tone.NoiseSynth({
+      noise: { type: "white" }, envelope: { attack: 0.001, decay: 0.035, sustain: 0 },
+    }).connect(hatHp);
+    hat.volume.value = -20;
+
+    // rounder, warmer electric-bass voice
+    const bass = new Tone.MonoSynth({
+      oscillator: { type: "fatsawtooth", count: 2, spread: 8 },
+      filter: { type: "lowpass", rolloff: -24, Q: 1.4 },
+      envelope: { attack: 0.006, decay: 0.3, sustain: 0.5, release: 0.2 },
+      filterEnvelope: { attack: 0.003, decay: 0.2, sustain: 0.25, baseFrequency: 110, octaves: 2.4, release: 0.2 },
+    }).connect(bus);
+    bass.volume.value = -8;
+
+    // Rhodes-ish FM keys for the comping stabs
+    const comp = new Tone.PolySynth(Tone.FMSynth, {
+      harmonicity: 3, modulationIndex: 9,
+      oscillator: { type: "sine" }, modulation: { type: "sine" },
+      envelope: { attack: 0.004, decay: 0.4, sustain: 0.05, release: 0.5 },
+      modulationEnvelope: { attack: 0.002, decay: 0.3, sustain: 0.08, release: 0.4 },
+    }).connect(bus);
+    comp.volume.value = -13;
+
+    jam.current = { ...jam.current, built: true, kick, snare, snBody, hat, bass, comp, bus, verb, limiter };
   }, []);
 
   const jamStep = useCallback((time) => {
     const J = jam.current;
+    const { keyPc, prog, groove, grooveId } = jamCfg.current;
     const step = J.step;
-    const bar = Math.floor(step / 8) % 12;
-    const e = step % 8;
-    const chord = JAM_CHORDS[PROGRESSION[bar]];
+    const bar = Math.floor(step / groove.steps) % prog.bars.length;
+    const e = step % groove.steps;
+    const chord = chordAt(keyPc, prog.bars[bar]);
+    const hum = () => 0.85 + Math.random() * 0.15; // humanize velocities
+    // comp voicing: 3rd + 7th (or 5th) two octaves up — the "shell"
+    const root4 = chord.bass + 24;
+    const shell = [
+      midiName(root4 + chord.third),
+      midiName(root4 + chord.seventh + (chord.seventh < chord.third ? 12 : 0)),
+    ];
+    const bnote = (semi, dur = "8n", vel = 0.9) =>
+      J.bass.triggerAttackRelease(midiName(chord.bass + semi), dur, time, vel * hum());
+    const boogie = chord.iv.includes(4) ? [0, 4, 7, 9] : [0, 3, 7, 10];
 
     try {
-      J.hat.triggerAttackRelease("32n", time, e % 2 === 0 ? 0.9 : 0.55);
-      if (e === 0 || e === 4) J.kick.triggerAttackRelease("C1", "8n", time);
-      if (e === 2 || e === 6) J.snare.triggerAttackRelease("16n", time, 0.85);
-      if (e % 2 === 0) {
-        const deg = [0, 4, 7, 9][e / 2]; // R 3 5 6 boogie
-        J.bass.triggerAttackRelease(midiName(chord.bass + deg), "8n", time, 0.9);
-      }
-      if (e === 2 || e === 6) {
-        // shell voicing: 3rd + b7, two octaves above bass
-        J.comp.triggerAttackRelease(
-          [midiName(chord.bass + 28), midiName(chord.bass + 34)], "16n", time, 0.6
-        );
+      if (grooveId === "shuffle") {
+        J.hat.triggerAttackRelease("32n", time, (e % 2 === 0 ? 0.9 : 0.5) * hum());
+        if (e === 0 || e === 4) J.kick.triggerAttackRelease("C1", "8n", time, hum());
+        if (e === 2 || e === 6) {
+          J.snare.triggerAttackRelease("16n", time, 0.85 * hum());
+          J.snBody.triggerAttackRelease("G2", "32n", time, 0.7);
+        }
+        if (e % 2 === 0) bnote(boogie[e / 2]);
+        if (e === 2 || e === 6) J.comp.triggerAttackRelease(shell, "16n", time, 0.6 * hum());
+      } else if (grooveId === "rock") {
+        J.hat.triggerAttackRelease("32n", time, (e % 2 === 0 ? 0.95 : 0.55) * hum());
+        if (e === 0 || e === 4 || e === 7) J.kick.triggerAttackRelease("C1", "8n", time, hum());
+        if (e === 2 || e === 6) {
+          J.snare.triggerAttackRelease("16n", time, 0.9 * hum());
+          J.snBody.triggerAttackRelease("G2", "32n", time, 0.75);
+        }
+        if (e % 2 === 0) bnote(e === 6 ? chord.iv[2] : 0, "8n", 0.95); // driving roots, 5th at the turn
+        if (e === 2 || e === 5) J.comp.triggerAttackRelease(shell, "8n", time, 0.5 * hum());
+      } else if (grooveId === "train") {
+        // train beat: continuous brushed 16ths on the snare, accents on 2 & 4
+        const accent = e === 4 || e === 12 ? 1 : e % 2 === 0 ? 0.4 : 0.28;
+        J.snare.triggerAttackRelease("32n", time, accent * hum());
+        if (e === 4 || e === 12) J.snBody.triggerAttackRelease("G2", "32n", time, 0.7);
+        if (e === 0 || e === 8) J.kick.triggerAttackRelease("C1", "8n", time, hum());
+        if (e === 0) bnote(0, "4n", 0.95);
+        if (e === 8) bnote(chord.iv[2], "4n", 0.9); // root–5 alternation
+        if (e === 14) bnote(chord.third, "16n", 0.7); // little walk into the next bar
+        if (e === 4 || e === 12) J.comp.triggerAttackRelease(shell, "8n", time, 0.45 * hum());
+      } else if (grooveId === "slow128") {
+        // 12/8: four beats of three triplet-eighths
+        J.hat.triggerAttackRelease("32n", time, (e % 3 === 0 ? 0.85 : 0.4) * hum());
+        if (e === 0) J.kick.triggerAttackRelease("C1", "8n", time, hum());
+        if (e === 6) {
+          J.snare.triggerAttackRelease("16n", time, 0.9 * hum());
+          J.snBody.triggerAttackRelease("G2", "32n", time, 0.75);
+        }
+        if (e === 0) bnote(0, "2n", 0.95);
+        if (e === 6) bnote(chord.iv[2], "4n", 0.85);
+        if (e === 10) bnote(chord.third, "8n", 0.7);
+        if (e === 3 || e === 9) J.comp.triggerAttackRelease(shell, "8n", time, 0.5 * hum());
+      } else if (grooveId === "waltz") {
+        // 3/4 boom–chick–chick
+        J.hat.triggerAttackRelease("32n", time, (e % 2 === 0 ? 0.8 : 0.4) * hum());
+        if (e === 0) J.kick.triggerAttackRelease("C1", "8n", time, hum());
+        if (e === 2 || e === 4) {
+          J.snare.triggerAttackRelease("16n", time, 0.65 * hum());
+        }
+        if (e === 0) bnote(bar % 2 === 0 ? 0 : chord.iv[2], "2n", 0.95);
+        if (e === 2 || e === 4) J.comp.triggerAttackRelease(shell, "8n", time, 0.5 * hum());
       }
     } catch (err) {}
 
     if (e === 0) Tone.Draw.schedule(() => setJamBar(bar), time);
-    J.step = (step + 1) % 96;
+    J.step = (step + 1) % (groove.steps * prog.bars.length);
   }, []);
 
   const startJam = useCallback(async () => {
     await Tone.start();
     await ensureAudio();
     buildJamSynths();
+    const groove = GROOVES[grooveKey];
     jam.current.step = 0;
     setJamBar(0);
     Tone.Transport.bpm.value = bpm;
-    Tone.Transport.swing = 0.55;
+    Tone.Transport.swing = groove.swing;
     Tone.Transport.swingSubdivision = "8n";
-    jam.current.loopId = Tone.Transport.scheduleRepeat(jamStep, "8n");
+    jam.current.loopId = Tone.Transport.scheduleRepeat(jamStep, groove.sub);
     Tone.Transport.start("+0.06");
     setJamPlaying(true);
-  }, [bpm, buildJamSynths, ensureAudio, jamStep]);
+  }, [bpm, grooveKey, buildJamSynths, ensureAudio, jamStep]);
 
   const stopJam = useCallback(() => {
     Tone.Transport.stop();
@@ -422,6 +582,14 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
     if (tab !== "jam" && jamPlaying) stopJam();
   }, [tab, jamPlaying, stopJam]);
 
+  // progression/groove swaps change the grid & subdivision — restart cleanly.
+  // (key changes are safe to apply live; the step reads them from jamCfg)
+  useEffect(() => {
+    if (jamPlaying) stopJam();
+    setJamBar(0);
+    // eslint-disable-next-line
+  }, [progKey, grooveKey]);
+
   useEffect(() => {
     const t = timers.current;
     return () => {
@@ -429,7 +597,7 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
       Tone.Transport.stop();
       Tone.Transport.cancel();
       const J = jam.current;
-      ["kick", "snare", "hat", "bass", "comp"].forEach((k) => {
+      ["kick", "snare", "snBody", "hat", "bass", "comp", "bus", "verb", "limiter"].forEach((k) => {
         try { J[k]?.dispose(); } catch (e) {}
       });
     };
@@ -462,17 +630,22 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
   }, [playMidi]);
 
   /* ---------------- jam renderer ---------------- */
-  const jamChord = JAM_CHORDS[PROGRESSION[jamBar]];
+  const jamProg = PROGRESSIONS[progKey];
+  const jamGroove = GROOVES[grooveKey];
+  const jamChord = chordAt(jamKey, jamProg.bars[Math.min(jamBar, jamProg.bars.length - 1)]);
+  const safeScale = SCALES[jamProg.safe];
+  const safePcs = safeScale.iv.map((i) => pc(jamKey + i));
   const jamRenderer = useCallback((s, f, midi) => {
     const semi = pc(midi - jamChord.rootPc);
-    if (DOM7.includes(semi)) {
+    if (jamChord.iv.includes(semi)) {
       const info = IV[semi];
-      return { fill: info.c, ink: info.k, label: info.l, ring: semi === 0, glow: semi === 4 };
+      return { fill: info.c, ink: info.k, label: info.l, ring: semi === 0, glow: semi === jamChord.third };
     }
-    if (showSafe && BLUES_A_PCS.includes(pc(midi)))
+    if (showSafe && safePcs.includes(pc(midi)))
       return { fill: "#1d2a2e", ink: "#4dd0c5", label: NOTES[pc(midi)], faint: true };
     return null;
-  }, [jamChord, showSafe]);
+    // eslint-disable-next-line
+  }, [jamChord.rootPc, jamChord.iv, jamChord.third, showSafe, jamKey, progKey]);
 
   /* ---------------- quiz: spaced-repetition weighting ---------------- */
   const weightedPc = useCallback(() => {
@@ -706,7 +879,7 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
 
   const weak = Object.entries(missByNote).sort((a, b) => b[1] - a[1]).slice(0, 3);
   const activeNotes = activeIv.map((i) => NOTES[pc(rootPc + i)]);
-  const nextBar = (jamBar + 1) % 12;
+  const nextChord = chordAt(jamKey, jamProg.bars[(jamBar + 1) % jamProg.bars.length]);
 
   return (
     <div className="min-h-screen w-full text-zinc-200" style={{
@@ -730,7 +903,7 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
         input[type=range]{accent-color:#7c6cff;}
       `}</style>
 
-      <div className="max-w-6xl mx-auto px-4 py-5">
+      <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-5">
 
         {/* ---------- header ---------- */}
         <header className="flex items-center justify-between gap-4 flex-wrap mb-5">
@@ -793,6 +966,7 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
             { v: "explore", l: "Explore", icon: Guitar },
             { v: "jam", l: "Jam", icon: Radio },
             { v: "train", l: "Train", icon: Target },
+            { v: "theory", l: "Theory", icon: BookOpen },
           ].map((t) => {
             const Icon = t.icon;
             const active = tab === t.v;
@@ -814,10 +988,10 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
         {/* ===================== EXPLORE ===================== */}
         {tab === "explore" && (
           <div className="bs-up grid lg:grid-cols-[1fr_300px] gap-4">
-            <div className="space-y-4">
+            <div className="space-y-4 min-w-0">
               <Panel className="p-4">
                 <div className="flex flex-wrap gap-x-6 gap-y-3 items-end">
-                  <div>
+                  <div className="min-w-0 max-w-full">
                     <div className="mono text-[10px] text-zinc-500 mb-1.5">ROOT</div>
                     <div className="flex flex-wrap gap-1">
                       {NOTES.map((n, i) => (
@@ -843,8 +1017,12 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
                       <div className="mono text-[10px] text-zinc-500 mb-1.5">SCALE</div>
                       <select value={scaleKey} onChange={(e) => setScaleKey(e.target.value)}
                         className="mono text-xs bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-white outline-none">
-                        {Object.entries(SCALES).map(([k, v]) => (
-                          <option key={k} value={k}>{v.name}</option>
+                        {SCALE_GROUPS.map((g) => (
+                          <optgroup key={g} label={g}>
+                            {Object.entries(SCALES).filter(([, v]) => v.grp === g).map(([k, v]) => (
+                              <option key={k} value={k}>{v.name}</option>
+                            ))}
+                          </optgroup>
                         ))}
                       </select>
                     </div>
@@ -902,10 +1080,10 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
                 </div>
               </Panel>
 
-              <Panel className="p-4">
+              <Panel className="p-2 sm:p-4">
                 <Fretboard tuning={tuning} numFrets={numFrets} leftHanded={lefty}
                   interactive onCell={handleExploreCell} cellRenderer={exploreRenderer} />
-                <p className="mono text-[10px] text-zinc-500 mt-2">
+                <p className="mono text-[10px] text-zinc-500 mt-2 px-2 pb-2 sm:px-0 sm:pb-0">
                   Tap any fret to hear it · root in red
                 </p>
               </Panel>
@@ -981,9 +1159,44 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
           <div className="bs-up space-y-4">
             {/* transport + guide */}
             <div className="grid lg:grid-cols-[1fr_300px] gap-4">
-              <div className="space-y-4">
-                <Panel className="p-4">
-                  <div className="flex items-center gap-4 flex-wrap">
+              <div className="space-y-4 min-w-0">
+                <Panel className="p-3 sm:p-4">
+                  <div className="flex flex-wrap gap-x-6 gap-y-3 items-end">
+                    <div className="min-w-0 max-w-full">
+                      <div className="mono text-[10px] text-zinc-500 mb-1.5">KEY</div>
+                      <div className="flex flex-wrap gap-1">
+                        {NOTES.map((n, i) => (
+                          <button key={n} onClick={() => setJamKey(i)}
+                            className={`mono text-xs w-9 h-9 rounded-lg transition-all ${
+                              jamKey === i ? "text-black font-bold" : "bg-white/5 text-zinc-400 hover:bg-white/10"
+                            }`}
+                            style={jamKey === i ? { background: "#ff2e4d" } : {}}>
+                            {n}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="mono text-[10px] text-zinc-500 mb-1.5">PROGRESSION</div>
+                      <select value={progKey} onChange={(e) => setProgKey(e.target.value)}
+                        className="mono text-xs bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-white outline-none">
+                        {Object.entries(PROGRESSIONS).map(([k, v]) => (
+                          <option key={k} value={k}>{v.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <div className="mono text-[10px] text-zinc-500 mb-1.5">GROOVE</div>
+                      <select value={grooveKey} onChange={(e) => setGrooveKey(e.target.value)}
+                        className="mono text-xs bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-white outline-none">
+                        {Object.entries(GROOVES).map(([k, v]) => (
+                          <option key={k} value={k}>{v.name} · {v.sig}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4 flex-wrap mt-4 pt-4 border-t border-white/8">
                     <button onClick={jamPlaying ? stopJam : startJam}
                       className="flex items-center gap-2 display font-bold text-sm px-5 py-3 rounded-xl text-black"
                       style={{ background: jamPlaying
@@ -991,11 +1204,11 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
                         : "linear-gradient(135deg,#22e3d8,#7c6cff)",
                         boxShadow: "0 0 22px rgba(124,108,255,0.35)" }}>
                       {jamPlaying ? <Square size={15} /> : <Play size={15} />}
-                      {jamPlaying ? "Stop" : "Play 12-Bar Blues in A"}
+                      {jamPlaying ? "Stop" : `Play ${NOTES[jamKey]} ${jamProg.name}`}
                     </button>
                     <div className="flex items-center gap-3 flex-1 min-w-44">
                       <span className="mono text-[10px] text-zinc-500">BPM</span>
-                      <input type="range" min="60" max="160" value={bpm}
+                      <input type="range" min="50" max="180" value={bpm}
                         onChange={(e) => setBpm(Number(e.target.value))}
                         className="flex-1" />
                       <span className="mono text-sm text-white w-8 text-right">{bpm}</span>
@@ -1008,10 +1221,15 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
                     </button>
                   </div>
 
-                  {/* 12-bar grid */}
-                  <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-12 gap-1.5 mt-4">
-                    {PROGRESSION.map((c, i) => {
+                  {/* bar grid */}
+                  <div className={`grid gap-1.5 mt-4 ${
+                    jamProg.bars.length > 4
+                      ? "grid-cols-4 sm:grid-cols-6 lg:grid-cols-12"
+                      : "grid-cols-4"
+                  }`}>
+                    {jamProg.bars.map((b, i) => {
                       const cur = jamPlaying && i === jamBar;
+                      const c = chordAt(jamKey, b);
                       return (
                         <div key={i}
                           className={`rounded-lg py-2 text-center border transition-all ${cur ? "bs-beat" : ""}`}
@@ -1021,25 +1239,25 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
                             boxShadow: "0 0 16px rgba(124,108,255,0.4)",
                           } : { background: "rgba(255,255,255,0.03)", borderColor: "rgba(255,255,255,0.07)" }}>
                           <div className="mono text-[9px] text-zinc-500">{i + 1}</div>
-                          <div className={`display font-bold text-sm ${cur ? "text-white" : "text-zinc-400"}`}>{c}</div>
+                          <div className={`display font-bold text-sm ${cur ? "text-white" : "text-zinc-400"}`}>{c.name}</div>
                         </div>
                       );
                     })}
                   </div>
                 </Panel>
 
-                <Panel className="p-4">
-                  <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+                <Panel className="p-2 sm:p-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2 mb-1 px-2 pt-2 sm:px-0 sm:pt-0">
                     <div className="flex items-center gap-2">
                       <span className="mono text-[10px] text-zinc-500">NOW:</span>
                       <span className="display font-extrabold text-xl text-white">{jamChord.name}</span>
-                      <span className="mono text-[11px] text-zinc-500">→ next: {JAM_CHORDS[PROGRESSION[nextBar]].name}</span>
+                      <span className="mono text-[11px] text-zinc-500">→ next: {nextChord.name}</span>
                     </div>
                     <span className="mono text-[10px] text-zinc-500">3rd pulses — that's your landing note</span>
                   </div>
                   <Fretboard tuning={tuning} numFrets={numFrets} leftHanded={lefty}
                     interactive onCell={handleExploreCell} cellRenderer={jamRenderer} />
-                  <p className="mono text-[10px] text-zinc-500 mt-2">
+                  <p className="mono text-[10px] text-zinc-500 mt-2 px-2 pb-2 sm:px-0 sm:pb-0">
                     Board follows the chord live · tap to noodle over the loop
                   </p>
                 </Panel>
@@ -1052,13 +1270,15 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
                   <span className="mono text-[10px] tracking-widest">JAM GUIDE</span>
                 </div>
                 <h2 className="display font-extrabold text-2xl leading-tight">{jamChord.name}</h2>
-                <p className="mono text-[11px] text-zinc-500 mb-4">bar {jamBar + 1} of 12 · shuffle feel</p>
+                <p className="mono text-[11px] text-zinc-500 mb-4">
+                  bar {jamBar + 1} of {jamProg.bars.length} · {jamGroove.name.toLowerCase()} · {jamGroove.sig}
+                </p>
 
                 {[
                   ["Chord tones", jamChord.tones],
-                  ["Scale to use", jamChord.scale],
-                  ["Target note", `${jamChord.third} — the 3rd. Land on it when the chord hits.`],
-                  ["Always safe", "A Blues scale works over the whole form"],
+                  ["Scale to use", `${NOTES[jamChord.rootPc]} ${jamChord.scaleHint}`],
+                  ["Target note", `${jamChord.thirdName} — the 3rd. Land on it when the chord hits.`],
+                  ["Always safe", `${NOTES[jamKey]} ${safeScale.name} works over the whole form`],
                 ].map(([k, v]) => (
                   <div key={k} className="py-2.5 border-b border-white/8 last:border-0">
                     <div className="mono text-[10px] text-zinc-500">{k.toUpperCase()}</div>
@@ -1071,10 +1291,10 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
                     <Sparkles size={12} />
                     <span className="mono text-[10px]">PLAYING THE CHANGES</span>
                   </div>
-                  <p className="text-xs text-zinc-400 leading-relaxed">
-                    Start with one note per chord: hit each chord's <span className="text-blue-400 font-semibold">3rd</span> as
-                    it lands (C# → F# → G#). Once that's automatic, fill the space between with the blues scale.
-                    That's the whole secret to sounding like you know the changes.
+                  <p className="text-xs text-zinc-400 leading-relaxed">{jamProg.tip}</p>
+                  <p className="text-xs text-zinc-500 leading-relaxed mt-2">
+                    In numbers this is <span className="mono text-cyan-300">{jamProg.nums}</span> — same
+                    shape in every key. Switch keys above and watch the chords move together.
                   </p>
                 </div>
               </Panel>
@@ -1238,6 +1458,160 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
               className="mono text-[11px] text-zinc-600 hover:text-zinc-400">
               reset progress
             </button>
+          </div>
+        )}
+
+        {/* ===================== THEORY ===================== */}
+        {tab === "theory" && (
+          <div className="bs-up space-y-4">
+            <Panel className="p-5">
+              <div className="flex items-center gap-2 text-cyan-300 mb-1">
+                <BookOpen size={15} />
+                <span className="mono text-[10px] tracking-widest">THE BUILDING BLOCKS</span>
+              </div>
+              <h2 className="display font-extrabold text-2xl leading-tight mb-3">Intervals — the 12 flavours</h2>
+              <p className="text-sm text-zinc-300 leading-relaxed mb-4">
+                Everything on the fretboard is made of <span className="text-white font-semibold">semitones</span> —
+                one fret = one semitone, 12 of them and you're back where you started, an octave up.
+                Every scale and chord is just a recipe of these distances measured from the root.
+                The colours below are used everywhere in this app:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {IV.map((iv, i) => (
+                  <div key={iv.l} className="flex items-center gap-2 rounded-lg px-3 py-2 border"
+                    style={{ background: `${iv.c}14`, borderColor: `${iv.c}44` }}>
+                    <span className="w-4 h-4 rounded-full inline-block" style={{ background: iv.c }} />
+                    <span className="mono text-xs text-white">{iv.l}</span>
+                    <span className="mono text-[10px] text-zinc-500">{i} fret{i === 1 ? "" : "s"}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-zinc-400 leading-relaxed mt-4">
+                A scale's <span className="text-white">formula</span> is which of these it keeps. Major keeps
+                R 2 3 4 5 6 7 (steps: W-W-H-W-W-W-H). Change one ingredient and the mood changes —
+                flatten the 3 and it turns minor. That's the entire trick.
+              </p>
+            </Panel>
+
+            {SCALE_GROUPS.map((g) => (
+              <Panel key={g} className="p-5">
+                <div className="mono text-[10px] tracking-widest text-cyan-300 mb-1">{g.toUpperCase()}</div>
+                <p className="text-xs text-zinc-400 leading-relaxed mb-4">
+                  {g === "Major scale modes" && (
+                    "One set of notes, seven starting points. Play C major starting from D and you get D Dorian — same notes, totally different mood, because the intervals now sit differently against the new root. Brightest to darkest: Lydian → Ionian → Mixolydian → Dorian → Aeolian → Phrygian → Locrian."
+                  )}
+                  {g === "Minor & jazz" && (
+                    "Natural minor has a weak pull home, so composers raised its 7th — harmonic minor — and smoothed the resulting leap by raising the 6th too — melodic minor. Each fix spawned its own set of modes, and three of them (Phrygian Dominant, Lydian Dominant, Altered) became sounds in their own right."
+                  )}
+                  {g === "Pentatonic & blues" && (
+                    "Strip the two most opinionated notes from a 7-note scale and what's left can't clash — that's why pentatonics feel safe. The blues scale then adds one deliberately wrong note (the b5) as seasoning: pass through it, don't live on it."
+                  )}
+                  {g === "Symmetric" && (
+                    "These repeat the same step pattern, so the shapes repeat up the neck — the diminished scales every 3 frets, whole tone every 2. Ambiguous by design: no note feels like home, which is exactly their use."
+                  )}
+                  {g === "Exotic" && (
+                    "Scales from outside Western harmony — augmented 2nds, floating b2s, gaps where you expect notes. One of these over a simple drone is an instant film score."
+                  )}
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left" style={{ minWidth: 560 }}>
+                    <thead>
+                      <tr className="mono text-[10px] text-zinc-500">
+                        <th className="py-2 pr-3 font-normal">SCALE</th>
+                        <th className="py-2 pr-3 font-normal">FORMULA</th>
+                        <th className="py-2 pr-3 font-normal">CHARACTER</th>
+                        <th className="py-2 font-normal"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(SCALES).filter(([, v]) => v.grp === g).map(([k, v]) => (
+                        <tr key={k} className="border-t border-white/8">
+                          <td className="py-2.5 pr-3">
+                            <div className="text-sm text-white font-semibold">{v.name}</div>
+                            <div className="mono text-[10px] text-zinc-500">{v.tag}</div>
+                          </td>
+                          <td className="py-2.5 pr-3">
+                            <div className="flex gap-1 flex-wrap">
+                              {v.iv.map((i) => (
+                                <span key={i} className="mono text-[10px] w-6 h-6 rounded-md flex items-center justify-center"
+                                  style={{ background: `${IV[i].c}22`, color: IV[i].c, border: `1px solid ${IV[i].c}55` }}>
+                                  {IV[i].l}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="py-2.5 pr-3 text-xs text-zinc-400">{v.char}</td>
+                          <td className="py-2.5 text-right">
+                            <button onClick={() => { setScaleKey(k); setViewMode("scale"); setTab("explore"); }}
+                              className="mono text-[10px] px-2.5 py-1.5 rounded-lg border border-cyan-400/40 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20 transition-colors whitespace-nowrap">
+                              View →
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Panel>
+            ))}
+
+            <Panel className="p-5">
+              <div className="mono text-[10px] tracking-widest text-cyan-300 mb-1">CHORDS COME FROM SCALES</div>
+              <h2 className="display font-extrabold text-2xl leading-tight mb-3">Stack every other note</h2>
+              <p className="text-sm text-zinc-300 leading-relaxed mb-3">
+                Take a major scale and stack alternating notes (1-3-5, 2-4-6, …) and you get one chord
+                per scale degree. In every major key the pattern of qualities is identical:
+              </p>
+              <div className="grid grid-cols-7 gap-1.5 mb-4" style={{ minWidth: 0 }}>
+                {[["I","maj"],["ii","min"],["iii","min"],["IV","maj"],["V","maj"],["vi","min"],["vii°","dim"]].map(([n, q]) => (
+                  <div key={n} className="rounded-lg py-2 text-center border border-white/8 bg-white/[0.03]">
+                    <div className="display font-bold text-sm text-white">{n}</div>
+                    <div className="mono text-[9px] text-zinc-500">{q}</div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                Add one more stack (the 7th) and I becomes maj7, ii becomes m7, V becomes a
+                <span className="text-white"> dominant 7</span> — the only place a dom7 occurs naturally,
+                which is why V7 pulls so hard back to I. The blues cheerfully breaks this rule and plays
+                dom7 on <em>everything</em>. That rule-break is the blues sound.
+              </p>
+            </Panel>
+
+            <Panel className="p-5">
+              <div className="mono text-[10px] tracking-widest text-cyan-300 mb-1">PROGRESSIONS & NASHVILLE NUMBERS</div>
+              <h2 className="display font-extrabold text-2xl leading-tight mb-3">Why musicians count 1 · 4 · 5</h2>
+              <p className="text-sm text-zinc-300 leading-relaxed mb-4">
+                Name chords by scale degree instead of letter and every song becomes portable:
+                “1-4-5 in A” is A-D-E; the same 1-4-5 in G is G-C-D. Learn the <em>shape</em> once,
+                play it in twelve keys. These are the classics — all playable in the Jam tab, any key:
+              </p>
+              <div className="space-y-2.5">
+                {Object.entries(PROGRESSIONS).map(([k, v]) => (
+                  <div key={k} className="flex items-center justify-between gap-3 rounded-xl px-4 py-3 border border-white/8 bg-white/[0.03] flex-wrap">
+                    <div className="min-w-40">
+                      <div className="text-sm text-white font-semibold">{v.name}</div>
+                      <div className="mono text-[10px] text-zinc-500">{v.nums} · {v.bars.length} bars</div>
+                    </div>
+                    <p className="text-xs text-zinc-400 flex-1 min-w-48">{v.tip}</p>
+                    <button onClick={() => { setProgKey(k); setTab("jam"); }}
+                      className="mono text-[10px] px-2.5 py-1.5 rounded-lg border border-cyan-400/40 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20 transition-colors whitespace-nowrap">
+                      Jam it →
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 rounded-xl p-3 bg-white/[0.03] border border-white/8">
+                <div className="flex items-center gap-1.5 text-zinc-400 mb-1">
+                  <Sparkles size={12} />
+                  <span className="mono text-[10px]">PRACTICE TIP</span>
+                </div>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Pick one progression and play it in three keys tonight. The moment you can find
+                  1, 4 and 5 from any root without thinking, you can walk into any jam night and survive.
+                </p>
+              </div>
+            </Panel>
           </div>
         )}
 
