@@ -29,6 +29,14 @@ gamified drills) with optional accounts and cloud-synced progress.
 - Supabase env values (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) are baked
   in at build time — rebuild after changing them.
 
+## Gotchas
+
+- iOS mutes Web Audio via the ring/silent switch ("ambient" category). The
+  looping silent `<audio>` element in `unlockIOSAudio()` (App.jsx) promotes the
+  page to the "playback" category so sound works regardless — don't remove it.
+- Jam bass/piano are real samples (`tonejs-instrument-*-mp3` packages) built as
+  static assets via `src/lib/jamSamples.js`; `startJam` awaits `Tone.loaded()`.
+
 ## Don'ts
 
 - Never commit `.env` or any real key; `.env.example` holds placeholders only.

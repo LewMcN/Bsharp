@@ -6,7 +6,34 @@ import {
   Radio, Crosshair, Layers, User, LogOut, BookOpen, LayoutGrid
 } from "lucide-react";
 import { supabase, isConfigured } from "./lib/supabase";
+import { makeBassSampler, makePianoSampler } from "./lib/jamSamples";
 import Auth from "./Auth.jsx";
+
+/* iOS routes WebAudio through the "ambient" category, which the ring/silent
+   switch mutes outright — the app looks broken with the switch flipped.
+   A looping (silent) <audio> element promotes the page to the "playback"
+   category, which ignores the switch. Must be kicked off by a user gesture. */
+let iosUnlockEl = null;
+function unlockIOSAudio() {
+  if (iosUnlockEl) return;
+  try {
+    const rate = 8000, n = rate / 5; // 0.2s of digital silence
+    const buf = new ArrayBuffer(44 + n * 2);
+    const v = new DataView(buf);
+    const w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+    w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVEfmt ");
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true);
+    v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data");
+    v.setUint32(40, n * 2, true);
+    const el = document.createElement("audio");
+    el.src = URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+    el.loop = true;
+    el.setAttribute("playsinline", "");
+    iosUnlockEl = el;
+    el.play().catch(() => { iosUnlockEl = null; });
+  } catch (e) {}
+}
 
 /* ----------------------------------------------------------------------
    B SHARP — Fretboard Intelligence · v2
@@ -594,6 +621,7 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
 
   /* ---------------- lead synth (tap-to-hear) ---------------- */
   const ensureAudio = useCallback(async () => {
+    unlockIOSAudio();
     if (startedRef.current) return;
     await Tone.start();
     const synth = new Tone.PluckSynth({ attackNoise: 1.1, dampening: 3600, resonance: 0.92 });
@@ -671,23 +699,12 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
     }).connect(hatHp);
     hat.volume.value = -20;
 
-    // rounder, warmer electric-bass voice
-    const bass = new Tone.MonoSynth({
-      oscillator: { type: "fatsawtooth", count: 2, spread: 8 },
-      filter: { type: "lowpass", rolloff: -24, Q: 1.4 },
-      envelope: { attack: 0.006, decay: 0.3, sustain: 0.5, release: 0.2 },
-      filterEnvelope: { attack: 0.003, decay: 0.2, sustain: 0.25, baseFrequency: 110, octaves: 2.4, release: 0.2 },
-    }).connect(bus);
-    bass.volume.value = -8;
+    // real recorded instruments: electric bass + piano (Tone.Sampler repitches)
+    const bass = makeBassSampler().connect(bus);
+    bass.volume.value = -5;
 
-    // Rhodes-ish FM keys for the comping stabs
-    const comp = new Tone.PolySynth(Tone.FMSynth, {
-      harmonicity: 3, modulationIndex: 9,
-      oscillator: { type: "sine" }, modulation: { type: "sine" },
-      envelope: { attack: 0.004, decay: 0.4, sustain: 0.05, release: 0.5 },
-      modulationEnvelope: { attack: 0.002, decay: 0.3, sustain: 0.08, release: 0.4 },
-    }).connect(bus);
-    comp.volume.value = -13;
+    const comp = makePianoSampler().connect(bus);
+    comp.volume.value = -10;
 
     jam.current = { ...jam.current, built: true, kick, snare, snBody, hat, bass, comp, bus, verb, limiter };
   }, []);
@@ -768,9 +785,11 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
   }, []);
 
   const startJam = useCallback(async () => {
+    unlockIOSAudio();
     await Tone.start();
     await ensureAudio();
     buildJamSynths();
+    try { await Tone.loaded(); } catch (e) {} // sample fetch — first press only
     const groove = GROOVES[grooveKey];
     jam.current.step = 0;
     setJamBar(0);
