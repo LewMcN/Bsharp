@@ -21,6 +21,8 @@ gamified drills) with optional accounts and cloud-synced progress.
 - `src/Auth.jsx` — sign-up/sign-in screens
 - `src/lib/supabase.js` — Supabase client; exports `isConfigured`
 - `supabase/schema.sql` — tables, row-level security, signup trigger (run once in the Supabase SQL editor)
+- `supabase/upgrade-social.sql` — social layer (posts, likes, profile fields, media storage); run on projects created before it existed — schema.sql already includes it
+- `src/lib/social.js` — feed/posts/likes/profile client used by the Social tab
 
 ## Behaviour to preserve
 

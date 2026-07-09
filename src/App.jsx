@@ -4,7 +4,8 @@ import {
   Music, Zap, Target, Play, Square, Volume2, Award, Flame, RotateCcw,
   Check, X, Activity, Sparkles, Brain, Guitar, Ear, ChevronRight,
   Radio, Crosshair, Layers, User, LogOut, BookOpen, LayoutGrid,
-  Lightbulb, Clapperboard, Download, Copy, ExternalLink, Shuffle
+  Lightbulb, Clapperboard, Download, Copy, ExternalLink, Shuffle,
+  Users, Settings, Sun, Moon, Heart, Trash2, ImagePlus, Instagram
 } from "lucide-react";
 import { supabase, isConfigured } from "./lib/supabase";
 import {
@@ -15,6 +16,10 @@ import {
   generateLick, layoutLick, lickToPNG, generateSongIdea,
   generateReelIdea, searchSongsterr,
 } from "./lib/ideas";
+import {
+  fetchFeed, createPost, deletePost, toggleLike,
+  updateProfile, uploadAvatar, timeAgo, igUrl,
+} from "./lib/social";
 import Auth from "./Auth.jsx";
 
 /* iOS routes WebAudio through the "ambient" category, which the ring/silent
@@ -433,6 +438,102 @@ function Fretboard({ tuning, numFrets, leftHanded, interactive, onCell, cellRend
   );
 }
 
+/* ----------------------------- Landing ----------------------------- */
+
+// The opening chord of SRV's "Lenny": Emaj9 voiced x-7-6-8-7-7,
+// played on the sampled strat through chorus + long reverb.
+async function playLennyChord() {
+  unlockIOSAudio();
+  await Tone.start();
+  const chorus = new Tone.Chorus({ frequency: 1.4, delayTime: 3.8, depth: 0.7, wet: 0.55 }).toDestination().start();
+  const verb = new Tone.Reverb({ decay: 4, wet: 0.45 }).connect(chorus);
+  const strat = makeElectricGuitarSampler().connect(verb);
+  strat.volume.value = -4;
+  try { await Tone.loaded(); } catch (e) {}
+  const notes = [52, 56, 63, 66, 71]; // E3 G#3 D#4 F#4 B4
+  const now = Tone.now() + 0.03;
+  notes.forEach((m, i) => {
+    try { strat.triggerAttackRelease(midiName(m), 4.5, now + i * 0.055, 0.7 - i * 0.04); } catch (e) {}
+  });
+  setTimeout(() => { try { strat.dispose(); verb.dispose(); chorus.dispose(); } catch (e) {} }, 8000);
+}
+
+function Landing({ onEnter }) {
+  const [leaving, setLeaving] = useState(false);
+  const go = () => {
+    if (leaving) return;
+    setLeaving(true);
+    playLennyChord().catch(() => {});
+    setTimeout(onEnter, 1250);
+  };
+  return (
+    <div onClick={go}
+      className="min-h-screen w-full flex flex-col items-center justify-center cursor-pointer select-none overflow-hidden"
+      style={{
+        background: "radial-gradient(1000px 700px at 50% 30%,rgba(124,108,255,0.14),transparent 60%)," +
+          "radial-gradient(800px 600px at 50% 80%,rgba(34,227,216,0.08),transparent 55%),#08080b",
+      }}>
+      <style>{`
+        @keyframes landFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-12px);}}
+        @keyframes landGlow{0%,100%{filter:drop-shadow(0 0 22px rgba(124,108,255,0.45));}50%{filter:drop-shadow(0 0 44px rgba(34,227,216,0.6));}}
+        @keyframes landHint{0%,100%{opacity:.35;}50%{opacity:.9;}}
+        @keyframes landExit{0%{transform:scale(1);opacity:1;}55%{transform:scale(1.12) rotate(-3deg);opacity:1;}100%{transform:scale(7);opacity:0;filter:blur(10px);}}
+        @keyframes landString{0%{transform:scaleX(0);opacity:0;}30%{opacity:1;}100%{transform:scaleX(1);opacity:0;}}
+        .land-card{animation:landFloat 4.5s ease-in-out infinite, landGlow 4.5s ease-in-out infinite;}
+        .land-exit{animation:landExit 1.25s cubic-bezier(.5,0,.8,.4) both;}
+        .land-str{transform-origin:left;animation:landString 1.1s ease-out both;}
+      `}</style>
+
+      <div className={leaving ? "land-exit" : "land-card"}>
+        <svg width="300" height="330" viewBox="0 0 300 330">
+          <defs>
+            <linearGradient id="lg1" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stopColor="#22e3d8" /><stop offset="1" stopColor="#7c6cff" />
+            </linearGradient>
+          </defs>
+          {/* neck + headstock */}
+          <rect x="141" y="18" width="18" height="130" rx="4" fill="#15151d" stroke="url(#lg1)" strokeWidth="1.5" />
+          <path d="M138 20 L162 20 L166 -2 L134 -2 Z" transform="translate(0 8)" fill="#15151d" stroke="url(#lg1)" strokeWidth="1.5" />
+          {[0, 1, 2].map((i) => (
+            <line key={i} x1="143" y1={40 + i * 26} x2="157" y2={40 + i * 26} stroke="rgba(210,210,225,0.4)" strokeWidth="2" />
+          ))}
+          {/* strat-ish body */}
+          <path d="M150 132
+            C 205 128, 232 158, 230 196
+            C 229 224, 210 238, 214 258
+            C 218 282, 196 305, 163 303
+            C 143 302, 143 292, 128 292
+            C 110 292, 106 306, 88 300
+            C 62 291, 58 258, 72 236
+            C 82 220, 70 206, 74 186
+            C 79 158, 106 130, 150 132 Z"
+            fill="#101018" stroke="url(#lg1)" strokeWidth="2.5" />
+          {/* strings over the body */}
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <line key={i} x1={144 + i * 2.4} y1="24" x2={144 + i * 2.4} y2="240" stroke="rgba(210,210,225,0.35)" strokeWidth="0.8" />
+          ))}
+          {/* B# on the body */}
+          <text x="150" y="238" textAnchor="middle" fontFamily="system-ui" fontWeight="900" fontSize="64" fill="url(#lg1)">B♯</text>
+        </svg>
+      </div>
+
+      {leaving ? (
+        <div className="w-64 mt-10 space-y-2">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="land-str h-px w-full"
+              style={{ background: "linear-gradient(90deg,#22e3d8,#7c6cff)", animationDelay: `${i * 0.07}s` }} />
+          ))}
+        </div>
+      ) : (
+        <p className="mono text-[11px] tracking-[0.35em] text-zinc-500 mt-10"
+          style={{ animation: "landHint 2.6s ease-in-out infinite" }}>
+          TAP TO TUNE IN
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ----------------------------- Chord diagram ----------------------------- */
 
 const STD_OPEN = [40, 45, 50, 55, 59, 64]; // low E → high E, standard tuning
@@ -594,7 +695,10 @@ function Seg({ value, options, onChange }) {
 
 /* ------------------------------- App ------------------------------- */
 
-function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPersist }) {
+function BSharp({
+  username, isGuest, userId, profile, onProfileChange, theme, setTheme,
+  onSignOut, onSignIn, initialProgress, onPersist,
+}) {
   const init = initialProgress || {};
   const [tab, setTab] = useState("explore");
 
@@ -627,6 +731,21 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
   // create tab
   const [reel, setReel] = useState(null);
   const [copied, setCopied] = useState(false);
+
+  // social tab
+  const [feed, setFeed] = useState([]);
+  const [feedState, setFeedState] = useState("idle"); // idle|loading|ready|error
+  const [postFile, setPostFile] = useState(null);
+  const [postCaption, setPostCaption] = useState("");
+  const [posting, setPosting] = useState(false);
+  const [postErr, setPostErr] = useState(null);
+
+  // settings modal
+  const [showSettings, setShowSettings] = useState(false);
+  const [setName, setSetName] = useState("");
+  const [setIg, setSetIg] = useState("");
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [settingsMsg, setSettingsMsg] = useState(null);
 
   // progression (hydrated from cloud or local save)
   const [xp, setXp] = useState(init.xp || 0);
@@ -736,6 +855,90 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
       try { strumRef.current.triggerAttackRelease(midiName(m), 1.4, now + i * 0.045); } catch (e) {}
     });
   }, []);
+
+  /* ---------------- social handlers ---------------- */
+  const loadFeed = useCallback(async () => {
+    if (!isConfigured) return;
+    setFeedState("loading");
+    try {
+      setFeed(await fetchFeed());
+      setFeedState("ready");
+    } catch (e) {
+      setFeedState("error");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "social" && feedState === "idle") loadFeed();
+    // eslint-disable-next-line
+  }, [tab]);
+
+  const submitPost = async () => {
+    if (!postFile || posting || !userId) return;
+    setPosting(true);
+    setPostErr(null);
+    try {
+      await createPost(userId, postFile, postCaption);
+      setPostFile(null);
+      setPostCaption("");
+      await loadFeed();
+    } catch (e) {
+      setPostErr(e.message || "Upload failed — try again");
+    }
+    setPosting(false);
+  };
+
+  const onLike = async (post) => {
+    if (!userId) { onSignIn(); return; }
+    const liked = post.likes.some((l) => l.user_id === userId);
+    setFeed((f) => f.map((p) => p.id === post.id ? {
+      ...p,
+      likes: liked ? p.likes.filter((l) => l.user_id !== userId) : [...p.likes, { user_id: userId }],
+    } : p));
+    try { await toggleLike(post.id, userId, liked); } catch (e) { loadFeed(); }
+  };
+
+  const onDeletePost = async (post) => {
+    if (!window.confirm("Delete this post?")) return;
+    setFeed((f) => f.filter((p) => p.id !== post.id));
+    try { await deletePost(post); } catch (e) { loadFeed(); }
+  };
+
+  /* ---------------- settings handlers ---------------- */
+  const openSettings = () => {
+    setSetName(profile?.display_name || "");
+    setSetIg(profile?.instagram || "");
+    setSettingsMsg(null);
+    setShowSettings(true);
+  };
+
+  const saveSettings = async () => {
+    if (!userId) { setShowSettings(false); return; }
+    setSettingsBusy(true);
+    setSettingsMsg(null);
+    try {
+      await updateProfile(userId, { display_name: setName.trim(), instagram: setIg.trim() });
+      onProfileChange({ display_name: setName.trim() || null, instagram: setIg.trim() || null });
+      setSettingsMsg({ ok: true, text: "Saved" });
+    } catch (e) {
+      setSettingsMsg({ ok: false, text: e.message || "Couldn't save" });
+    }
+    setSettingsBusy(false);
+  };
+
+  const onAvatarPick = async (file) => {
+    if (!file || !userId) return;
+    setSettingsBusy(true);
+    setSettingsMsg(null);
+    try {
+      const url = await uploadAvatar(userId, file);
+      onProfileChange({ avatar_url: url });
+      setSettingsMsg({ ok: true, text: "Photo updated" });
+    } catch (e) {
+      setSettingsMsg({ ok: false, text: e.message || "Upload failed" });
+    }
+    setSettingsBusy(false);
+  };
 
   /* ---------------- ideas & create handlers ---------------- */
   const newLick = useCallback((k = ideaKey, sc = ideaScale, st = lickStyle) => {
@@ -1350,11 +1553,12 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
   const nextChord = chordAt(jamKey, jamProg.bars[(jamBar + 1) % jamProg.bars.length]);
 
   return (
-    <div className="min-h-screen w-full text-zinc-200" style={{
+    <div className={`min-h-screen w-full text-zinc-200 ${theme === "light" ? "bs-light" : ""}`} style={{
       fontFamily: "'DM Sans',ui-sans-serif,system-ui,sans-serif",
       touchAction: "manipulation",
       background: "radial-gradient(900px 600px at 12% -5%,rgba(34,227,216,0.10),transparent 60%)," +
         "radial-gradient(900px 700px at 95% 0%,rgba(124,108,255,0.12),transparent 55%),#08080b",
+      ...(theme === "light" ? { filter: "invert(0.94) hue-rotate(180deg)", colorScheme: "light" } : {}),
     }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
@@ -1369,6 +1573,7 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
         .bs-beat{animation:bsb .3s ease-out;}
         @keyframes bsb{0%{transform:scale(1.12);}100%{transform:scale(1);}}
         input[type=range]{accent-color:#7c6cff;}
+        .bs-light img,.bs-light video{filter:invert(1.064) hue-rotate(180deg);}
       `}</style>
 
       <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-5">
@@ -1404,9 +1609,14 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
               <div className="mono text-[9px] text-zinc-500 mt-1">{xp} XP</div>
             </div>
             <div className="flex items-center gap-2 pl-3 border-l border-white/10">
-              <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center">
-                <User size={14} className={isGuest ? "text-zinc-500" : "text-cyan-300"} />
-              </div>
+              <button onClick={openSettings} title="Settings & profile"
+                className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden hover:border-cyan-400/40 transition-colors">
+                {profile?.avatar_url ? (
+                  <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <User size={14} className={isGuest ? "text-zinc-500" : "text-cyan-300"} />
+                )}
+              </button>
               <div className="hidden sm:block max-w-28">
                 <div className="mono text-[9px] text-zinc-500">{isGuest ? "GUEST" : "SYNCED"}</div>
                 <div className="text-xs text-white leading-tight truncate">
@@ -1419,9 +1629,9 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
                   Sign in
                 </button>
               ) : (
-                <button onClick={onSignOut} title="Sign out"
+                <button onClick={openSettings} title="Settings & profile"
                   className="p-2 rounded-lg border border-white/10 text-zinc-400 hover:text-white transition-colors">
-                  <LogOut size={13} />
+                  <Settings size={13} />
                 </button>
               )}
             </div>
@@ -1435,6 +1645,7 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
             { v: "chords", l: "Chords", icon: LayoutGrid },
             { v: "jam", l: "Jam", icon: Radio },
             { v: "train", l: "Train", icon: Target },
+            { v: "social", l: "Social", icon: Users },
             { v: "ideas", l: "Ideas", icon: Lightbulb },
             { v: "create", l: "Create", icon: Clapperboard },
             { v: "theory", l: "Theory", icon: BookOpen },
@@ -1562,11 +1773,11 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
                 <Fretboard tuning={tuning} numFrets={numFrets} leftHanded={lefty}
                   interactive onCell={handleExploreCell} cellRenderer={exploreRenderer}
                   bands={cagedWindows || []} />
-                <p className="mono text-[10px] text-zinc-500 mt-2 px-2 pb-2 sm:px-0 sm:pb-0">
-                  {cagedKey === "all"
-                    ? "Tap any fret to hear it · root in red"
-                    : `${cagedKey} shape · frets ${cagedWindows.map(([a, b]) => `${a}–${b}`).join(" & ")} · roots on the ${CAGED_POS[cagedKey].roots} · notes outside the window are ghosted`}
-                </p>
+                {cagedKey !== "all" && (
+                  <p className="mono text-[10px] text-zinc-500 mt-2 px-2 pb-2 sm:px-0 sm:pb-0">
+                    {`${cagedKey} shape · frets ${cagedWindows.map(([a, b]) => `${a}–${b}`).join(" & ")} · roots on the ${CAGED_POS[cagedKey].roots}`}
+                  </p>
+                )}
               </Panel>
 
               <Panel className="p-3">
@@ -1677,10 +1888,7 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
                     form={form} onStrum={strumChord} />
                 ))}
               </div>
-              <p className="mono text-[10px] text-zinc-500">
-                Tap a diagram to hear it · standard tuning · the E and A forms are the CAGED barre
-                shapes — slide them anywhere on the neck
-              </p>
+              <p className="mono text-[10px] text-zinc-500">Tap a diagram to hear it</p>
             </div>
 
             {/* chord profile */}
@@ -1886,13 +2094,9 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
                       <span className="display font-extrabold text-xl text-white">{jamChord.name}</span>
                       <span className="mono text-[11px] text-zinc-500">→ next: {nextChord.name}</span>
                     </div>
-                    <span className="mono text-[10px] text-zinc-500">3rd pulses — that's your landing note</span>
                   </div>
                   <Fretboard tuning={tuning} numFrets={numFrets} leftHanded={lefty}
                     interactive onCell={handleExploreCell} cellRenderer={jamRenderer} />
-                  <p className="mono text-[10px] text-zinc-500 mt-2 px-2 pb-2 sm:px-0 sm:pb-0">
-                    Board follows the chord live · tap to noodle over the loop
-                  </p>
                 </Panel>
               </div>
 
@@ -2091,6 +2295,142 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
               className="mono text-[11px] text-zinc-600 hover:text-zinc-400">
               reset progress
             </button>
+          </div>
+        )}
+
+        {/* ===================== SOCIAL ===================== */}
+        {tab === "social" && (
+          <div className="bs-up max-w-xl mx-auto space-y-4">
+            {!isConfigured ? (
+              <Panel className="p-6 text-center">
+                <Users size={28} className="mx-auto text-zinc-500 mb-3" />
+                <h2 className="display font-bold text-lg mb-2">The feed needs the backend connected</h2>
+                <p className="text-sm text-zinc-400 leading-relaxed">
+                  Add your Supabase keys to the build (see README) and run
+                  <span className="mono text-cyan-300"> supabase/upgrade-social.sql </span>
+                  in the Supabase SQL editor. Then this tab becomes a shared feed of everyone's
+                  playing clips.
+                </p>
+              </Panel>
+            ) : (
+              <>
+                {/* composer */}
+                {isGuest ? (
+                  <Panel className="p-4 flex items-center justify-between gap-3 flex-wrap">
+                    <p className="text-sm text-zinc-400">Sign in to share your playing.</p>
+                    <button onClick={onSignIn}
+                      className="mono text-xs px-4 py-2.5 rounded-lg text-black font-bold"
+                      style={{ background: "linear-gradient(135deg,#22e3d8,#7c6cff)" }}>
+                      Sign in
+                    </button>
+                  </Panel>
+                ) : (
+                  <Panel className="p-4">
+                    <div className="flex gap-3">
+                      <label className={`shrink-0 w-20 h-20 rounded-xl border flex flex-col items-center justify-center cursor-pointer transition-colors ${
+                        postFile ? "border-cyan-400/50 bg-cyan-400/10" : "border-dashed border-white/20 hover:border-white/40"
+                      }`}>
+                        <input type="file" accept="image/*,video/*" className="hidden"
+                          onChange={(e) => setPostFile(e.target.files?.[0] || null)} />
+                        <ImagePlus size={18} className={postFile ? "text-cyan-300" : "text-zinc-500"} />
+                        <span className="mono text-[8.5px] text-zinc-500 mt-1 px-1 text-center leading-tight">
+                          {postFile ? (postFile.type.startsWith("video/") ? "video ✓" : "photo ✓") : "photo / video"}
+                        </span>
+                      </label>
+                      <div className="flex-1 flex flex-col gap-2">
+                        <textarea value={postCaption} onChange={(e) => setPostCaption(e.target.value.slice(0, 500))}
+                          placeholder="What are you working on?"
+                          rows={2}
+                          className="w-full text-sm bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white outline-none resize-none placeholder:text-zinc-600" />
+                        <div className="flex items-center gap-3">
+                          <button onClick={submitPost} disabled={!postFile || posting}
+                            className="mono text-xs px-4 py-2 rounded-lg text-black font-bold disabled:opacity-40"
+                            style={{ background: "linear-gradient(135deg,#22e3d8,#7c6cff)" }}>
+                            {posting ? "Posting…" : "Post"}
+                          </button>
+                          {postErr && <span className="text-xs text-red-400">{postErr}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </Panel>
+                )}
+
+                {/* feed */}
+                {feedState === "loading" && (
+                  <p className="mono text-[11px] text-zinc-500 text-center py-6">Loading the feed…</p>
+                )}
+                {feedState === "error" && (
+                  <Panel className="p-5 text-center">
+                    <p className="text-sm text-zinc-400 mb-3">
+                      Couldn't load the feed. If this is a fresh backend, make sure
+                      <span className="mono text-cyan-300"> upgrade-social.sql </span> has been run.
+                    </p>
+                    <button onClick={loadFeed} className="mono text-xs px-4 py-2 rounded-lg border border-white/10 text-zinc-400 hover:text-white">
+                      Retry
+                    </button>
+                  </Panel>
+                )}
+                {feedState === "ready" && feed.length === 0 && (
+                  <Panel className="p-8 text-center">
+                    <Guitar size={26} className="mx-auto text-zinc-600 mb-3" />
+                    <p className="text-sm text-zinc-400">Nothing here yet — be the first to post your playing.</p>
+                  </Panel>
+                )}
+                {feed.map((post) => {
+                  const prof = post.profiles || {};
+                  const liked = userId && post.likes.some((l) => l.user_id === userId);
+                  const ig = igUrl(prof.instagram);
+                  return (
+                    <Panel key={post.id} className="overflow-hidden">
+                      <div className="flex items-center gap-2.5 p-3">
+                        <div className="w-9 h-9 rounded-full bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center shrink-0">
+                          {prof.avatar_url
+                            ? <img src={prof.avatar_url} alt="" className="w-full h-full object-cover" />
+                            : <User size={15} className="text-zinc-500" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm text-white font-semibold truncate">
+                            {prof.display_name || prof.username || "player"}
+                          </div>
+                          <div className="mono text-[10px] text-zinc-500">{timeAgo(post.created_at)}</div>
+                        </div>
+                        {ig && (
+                          <a href={ig} target="_blank" rel="noreferrer" title="Instagram"
+                            className="p-2 rounded-lg text-zinc-500 hover:text-cyan-300 transition-colors">
+                            <Instagram size={15} />
+                          </a>
+                        )}
+                        {userId === post.user_id && (
+                          <button onClick={() => onDeletePost(post)} title="Delete"
+                            className="p-2 rounded-lg text-zinc-600 hover:text-red-400 transition-colors">
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                      {post.media_type === "video" ? (
+                        <video src={post.media_url} controls playsInline preload="metadata"
+                          className="w-full max-h-[70vh] bg-black" />
+                      ) : (
+                        <img src={post.media_url} alt="" loading="lazy"
+                          className="w-full max-h-[70vh] object-contain bg-black" />
+                      )}
+                      <div className="p-3">
+                        <button onClick={() => onLike(post)}
+                          className={`flex items-center gap-1.5 mono text-xs transition-colors ${
+                            liked ? "text-red-400" : "text-zinc-500 hover:text-zinc-300"
+                          }`}>
+                          <Heart size={15} fill={liked ? "currentColor" : "none"} />
+                          {post.likes.length > 0 && post.likes.length}
+                        </button>
+                        {post.caption && (
+                          <p className="text-sm text-zinc-300 mt-2 leading-relaxed whitespace-pre-wrap">{post.caption}</p>
+                        )}
+                      </div>
+                    </Panel>
+                  );
+                })}
+              </>
+            )}
           </div>
         )}
 
@@ -2598,6 +2938,88 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
           </div>
         )}
 
+        {/* settings & profile modal */}
+        {showSettings && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(6px)" }}
+            onClick={() => setShowSettings(false)}>
+            <div onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-sm rounded-2xl border border-white/10 p-5 bs-up"
+              style={{ background: "#101016" }}>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="display font-extrabold text-xl">Settings</h2>
+                <button onClick={() => setShowSettings(false)}
+                  className="p-2 rounded-lg text-zinc-500 hover:text-white"><X size={16} /></button>
+              </div>
+
+              <div className="mono text-[10px] text-zinc-500 mb-1.5">THEME</div>
+              <Seg value={theme} onChange={setTheme} options={[
+                { v: "dark", l: "Dark" }, { v: "light", l: "Light" },
+              ]} />
+
+              {!isGuest ? (
+                <>
+                  <div className="flex items-center gap-3 mt-5">
+                    <label className="relative w-16 h-16 rounded-full bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center cursor-pointer hover:border-cyan-400/40 transition-colors shrink-0"
+                      title="Change photo">
+                      <input type="file" accept="image/*" className="hidden"
+                        onChange={(e) => onAvatarPick(e.target.files?.[0])} />
+                      {profile?.avatar_url
+                        ? <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
+                        : <User size={22} className="text-zinc-500" />}
+                    </label>
+                    <div className="text-xs text-zinc-400">
+                      <div className="text-white text-sm">@{profile?.username}</div>
+                      Tap the photo to change it
+                    </div>
+                  </div>
+
+                  <div className="mono text-[10px] text-zinc-500 mt-4 mb-1.5">VISIBLE NAME</div>
+                  <input value={setName} onChange={(e) => setSetName(e.target.value.slice(0, 40))}
+                    placeholder={profile?.username || "Your name"}
+                    className="w-full text-sm bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-white outline-none" />
+
+                  <div className="mono text-[10px] text-zinc-500 mt-3 mb-1.5">INSTAGRAM</div>
+                  <div className="flex items-center gap-2">
+                    <Instagram size={15} className="text-zinc-500 shrink-0" />
+                    <input value={setIg} onChange={(e) => setSetIg(e.target.value.slice(0, 60))}
+                      placeholder="@yourhandle"
+                      className="flex-1 text-sm bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-white outline-none" />
+                  </div>
+
+                  <div className="flex items-center gap-3 mt-5">
+                    <button onClick={saveSettings} disabled={settingsBusy}
+                      className="mono text-xs px-5 py-2.5 rounded-lg text-black font-bold disabled:opacity-50"
+                      style={{ background: "linear-gradient(135deg,#22e3d8,#7c6cff)" }}>
+                      {settingsBusy ? "Saving…" : "Save"}
+                    </button>
+                    {settingsMsg && (
+                      <span className={`text-xs ${settingsMsg.ok ? "text-emerald-400" : "text-red-400"}`}>
+                        {settingsMsg.text}
+                      </span>
+                    )}
+                    <button onClick={() => { setShowSettings(false); onSignOut(); }}
+                      className="ml-auto flex items-center gap-1.5 mono text-[11px] text-zinc-500 hover:text-red-400 transition-colors">
+                      <LogOut size={12} /> Sign out
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="mt-5">
+                  <p className="text-xs text-zinc-400 mb-3">
+                    Sign in to set your name, photo and Instagram — and to post in the Social tab.
+                  </p>
+                  <button onClick={() => { setShowSettings(false); onSignIn(); }}
+                    className="mono text-xs px-4 py-2.5 rounded-lg text-black font-bold"
+                    style={{ background: "linear-gradient(135deg,#22e3d8,#7c6cff)" }}>
+                    Sign in
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* level up toast */}
         {levelUp && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bs-up z-50">
@@ -2649,9 +3071,16 @@ export default function Root() {
   const [session, setSession] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [screen, setScreen] = useState("auth"); // auth | app
-  const [username, setUsername] = useState(null);
+  const [entered, setEntered] = useState(false); // landing gate
+  const [profile, setProfile] = useState(null);
   const [cloud, setCloud] = useState(null);
   const [loadingCloud, setLoadingCloud] = useState(false);
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem("bsharp-theme") || "dark"; } catch (e) { return "dark"; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("bsharp-theme", theme); } catch (e) {}
+  }, [theme]);
 
   // watch the Supabase session
   useEffect(() => {
@@ -2666,24 +3095,24 @@ export default function Root() {
 
   // on sign-in: pull profile + progress, then enter the app
   useEffect(() => {
-    if (!session) { setUsername(null); setCloud(null); return; }
+    if (!session) { setProfile(null); setCloud(null); return; }
     let live = true;
     (async () => {
       setLoadingCloud(true);
       try {
         const [{ data: prof }, { data: prog }] = await Promise.all([
-          supabase.from("profiles").select("username").eq("id", session.user.id).maybeSingle(),
+          supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle(),
           supabase.from("progress").select("*").eq("user_id", session.user.id).maybeSingle(),
         ]);
         if (!live) return;
-        setUsername(prof?.username || session.user.email);
+        setProfile(prof || { username: session.user.email });
         setCloud(prog ? {
           xp: prog.xp, best: prog.best_streak, answered: prog.answered,
           correct: prog.correct, missByNote: prog.miss_by_note || {},
         } : {});
       } catch (e) {
         if (!live) return;
-        setUsername(session.user.email);
+        setProfile({ username: session.user.email });
         setCloud({});
       }
       setLoadingCloud(false);
@@ -2712,6 +3141,7 @@ export default function Root() {
     setScreen("auth");
   }, []);
 
+  if (!entered) return <Landing onEnter={() => setEntered(true)} />;
   if (!authReady) return <Splash />;
   if (session && loadingCloud) return <Splash />;
   if (screen === "auth" && !session) return <Auth onGuest={() => setScreen("app")} />;
@@ -2720,8 +3150,13 @@ export default function Root() {
   return (
     <BSharp
       key={session?.user?.id || "guest"}
-      username={username}
+      username={profile?.display_name || profile?.username}
       isGuest={!signedIn}
+      userId={session?.user?.id || null}
+      profile={profile}
+      onProfileChange={(p) => setProfile((prev) => ({ ...prev, ...p }))}
+      theme={theme}
+      setTheme={setTheme}
       onSignOut={signOut}
       onSignIn={() => setScreen("auth")}
       initialProgress={signedIn ? cloud : loadGuest()}
