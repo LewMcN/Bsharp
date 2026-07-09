@@ -7,7 +7,10 @@ import {
   Lightbulb, Clapperboard, Download, Copy, ExternalLink, Shuffle
 } from "lucide-react";
 import { supabase, isConfigured } from "./lib/supabase";
-import { makeBassSampler, makePianoSampler } from "./lib/jamSamples";
+import {
+  makeBassSampler, makePianoSampler,
+  makeElectricGuitarSampler, makeAcousticGuitarSampler,
+} from "./lib/jamSamples";
 import {
   generateLick, layoutLick, lickToPNG, generateSongIdea,
   generateReelIdea, searchSongsterr,
@@ -225,7 +228,19 @@ const CHORD_QUALITIES = {
   maj7:   { suf: "maj7", iv: [0,4,7,11], scaleHint: "Major (Ionian)" },
   maj:    { suf: "",     iv: [0,4,7],    scaleHint: "Major pentatonic" },
   min:    { suf: "m",    iv: [0,3,7],    scaleHint: "Minor pentatonic" },
+  dim:    { suf: "°",    iv: [0,3,6],    scaleHint: "Locrian" },
 };
+
+// Nashville-number palette for the custom progression builder (in-key + borrowed)
+const NASHVILLE = [
+  { l: "1", d: 0, q: "maj" }, { l: "2m", d: 2, q: "min" }, { l: "3m", d: 4, q: "min" },
+  { l: "4", d: 5, q: "maj" }, { l: "5", d: 7, q: "maj" }, { l: "6m", d: 9, q: "min" },
+  { l: "7°", d: 11, q: "dim" },
+  { l: "1⁷", d: 0, q: "7" }, { l: "4⁷", d: 5, q: "7" }, { l: "5⁷", d: 7, q: "7" },
+  { l: "1m", d: 0, q: "m7" }, { l: "4m", d: 5, q: "m7" },
+  { l: "♭3", d: 3, q: "maj" }, { l: "♭6", d: 8, q: "maj" }, { l: "♭7", d: 10, q: "maj" },
+];
+const DEFAULT_CUSTOM = [[0,"7"],[0,"7"],[0,"7"],[0,"7"],[5,"7"],[5,"7"],[0,"7"],[0,"7"],[7,"7"],[5,"7"],[0,"7"],[7,"7"]];
 
 const PROGRESSIONS = {
   blues12: {
@@ -260,13 +275,15 @@ const PROGRESSIONS = {
   },
 };
 
-// Grooves define the feel: subdivision, steps per bar, swing, time signature.
+// Grooves/styles: subdivision, steps per bar, swing, genre bpm, guitar drive.
 const GROOVES = {
-  shuffle: { name: "Shuffle",        sig: "4/4 swung", sub: "8n",  steps: 8,  swing: 0.55 },
-  rock:    { name: "Straight Rock",  sig: "4/4",       sub: "8n",  steps: 8,  swing: 0 },
-  train:   { name: "Train Beat",     sig: "4/4",       sub: "16n", steps: 16, swing: 0 },
-  slow128: { name: "Slow Blues",     sig: "12/8",      sub: "8t",  steps: 12, swing: 0 },
-  waltz:   { name: "Waltz",          sig: "3/4",       sub: "8n",  steps: 6,  swing: 0 },
+  shuffle:   { name: "Blues Shuffle",   sig: "4/4 swung", sub: "8n",  steps: 8,  swing: 0.55, bpm: 96 },
+  slow128:   { name: "Slow Blues",      sig: "12/8",      sub: "8t",  steps: 12, swing: 0,    bpm: 58 },
+  rock:      { name: "Rock",            sig: "4/4",       sub: "8n",  steps: 8,  swing: 0,    bpm: 122, drive: 0.35 },
+  metal:     { name: "Metal",           sig: "4/4",       sub: "16n", steps: 16, swing: 0,    bpm: 142, drive: 0.8 },
+  country:   { name: "Country Train",   sig: "4/4",       sub: "16n", steps: 16, swing: 0,    bpm: 112 },
+  bluegrass: { name: "Bluegrass",       sig: "2/4 fast",  sub: "8n",  steps: 8,  swing: 0,    bpm: 138 },
+  waltz:     { name: "Country Waltz",   sig: "3/4",       sub: "8n",  steps: 6,  swing: 0,    bpm: 104 },
 };
 
 const chordAt = (keyPc, [deg, q]) => {
@@ -636,6 +653,18 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
   const [jamKey, setJamKey] = useState(9); // pitch class, default A
   const [progKey, setProgKey] = useState("blues12");
   const [grooveKey, setGrooveKey] = useState("shuffle");
+  const [customBars, setCustomBars] = useState(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem("bsharp-customprog"));
+      if (Array.isArray(s) && s.length) return s;
+    } catch (e) {}
+    return DEFAULT_CUSTOM.map((b) => [...b]);
+  });
+  const [selectedChip, setSelectedChip] = useState(null);
+
+  useEffect(() => {
+    try { localStorage.setItem("bsharp-customprog", JSON.stringify(customBars)); } catch (e) {}
+  }, [customBars]);
 
   const synthRef = useRef(null);
   const strumRef = useRef(null);
@@ -793,9 +822,26 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
   }, [ensureAudio, rootPc, activeIv]);
 
   /* ---------------- jam engine ---------------- */
+  // custom progression: empty bars carry the previous chord forward
+  const filledCustom = (() => {
+    let last = null;
+    const out = customBars.map((b) => { if (b) { last = b; } return last; });
+    const firstIdx = out.findIndex(Boolean);
+    if (firstIdx < 0) return [[0, "maj"]];
+    for (let i = 0; i < firstIdx; i++) out[i] = last; // leading empties wrap from the end
+    return out;
+  })();
+  const customSafe = filledCustom.some(([d, q]) => d === 0 && q === "7") ? "blues"
+    : (filledCustom[0][1] === "min" || filledCustom[0][1] === "m7") ? "minPent" : "majPent";
+  const customProg = {
+    name: "Custom", nums: "your own changes", safe: customSafe, bars: filledCustom,
+    tip: "Your progression. Change a bar mid-jam and the band follows — in any key.",
+  };
+  const jamProg = progKey === "custom" ? customProg : PROGRESSIONS[progKey];
+
   // live jam config readable from inside the scheduled step (avoids stale closures)
   const jamCfg = useRef(null);
-  jamCfg.current = { keyPc: jamKey, prog: PROGRESSIONS[progKey], groove: GROOVES[grooveKey], grooveId: grooveKey };
+  jamCfg.current = { keyPc: jamKey, prog: jamProg, groove: GROOVES[grooveKey], grooveId: grooveKey };
 
   const buildJamSynths = useCallback(() => {
     if (jam.current.built) return;
@@ -835,7 +881,14 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
     const comp = makePianoSampler().connect(bus);
     comp.volume.value = -10;
 
-    jam.current = { ...jam.current, built: true, kick, snare, snBody, hat, bass, comp, bus, verb, limiter };
+    // rhythm guitars: electric through a switchable drive, acoustic clean
+    const dist = new Tone.Distortion({ distortion: 0.7, oversample: "2x", wet: 0 }).connect(bus);
+    const eguitar = makeElectricGuitarSampler().connect(dist);
+    eguitar.volume.value = -9;
+    const aguitar = makeAcousticGuitarSampler().connect(bus);
+    aguitar.volume.value = -9;
+
+    jam.current = { ...jam.current, built: true, kick, snare, snBody, hat, bass, comp, dist, eguitar, aguitar, bus, verb, limiter };
   }, []);
 
   const jamStep = useCallback((time) => {
@@ -855,6 +908,12 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
     const bnote = (semi, dur = "8n", vel = 0.9) =>
       J.bass.triggerAttackRelease(midiName(chord.bass + semi), dur, time, vel * hum());
     const boogie = chord.iv.includes(4) ? [0, 4, 7, 9] : [0, 3, 7, 10];
+    // rhythm-guitar voicings in the E2 register
+    const g3 = chord.bass + 12;
+    const power = [midiName(g3), midiName(g3 + 7), midiName(g3 + 12)];
+    const triad = [midiName(g3), midiName(g3 + chord.third), midiName(g3 + 7), midiName(g3 + 12)];
+    const strum = (gtr, notes, dur, vel, spread = 0.014) =>
+      notes.forEach((nn, i) => { try { gtr.triggerAttackRelease(nn, dur, time + i * spread, vel * hum()); } catch (err) {} });
 
     try {
       if (grooveId === "shuffle") {
@@ -874,8 +933,23 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
           J.snBody.triggerAttackRelease("G2", "32n", time, 0.75);
         }
         if (e % 2 === 0) bnote(e === 6 ? chord.iv[2] : 0, "8n", 0.95); // driving roots, 5th at the turn
-        if (e === 2 || e === 5) J.comp.triggerAttackRelease(shell, "8n", time, 0.5 * hum());
-      } else if (grooveId === "train") {
+        // driven power chords: ring on the downbeat, tight chugs between
+        if (e === 0) strum(J.eguitar, power, "2n", 0.85, 0.008);
+        else if (e === 3 || e === 5) strum(J.eguitar, power.slice(0, 2), "16n", 0.55, 0.004);
+      } else if (grooveId === "metal") {
+        // gallop chug (8th + two 16ths per beat), kick shadowing the guitar
+        const inGallop = e % 4 === 0 || e % 4 === 2 || e % 4 === 3;
+        if (inGallop) {
+          try { J.eguitar.triggerAttackRelease(midiName(g3), "32n", time, (e % 4 === 0 ? 0.9 : 0.6) * hum()); } catch (err) {}
+          J.kick.triggerAttackRelease("C1", "16n", time, 0.9 * hum());
+        }
+        if (e === 0) strum(J.eguitar, power, "4n", 0.9, 0.006); // chord accent on the change
+        if (e === 4 || e === 12) {
+          J.snare.triggerAttackRelease("16n", time, 1 * hum());
+          J.snBody.triggerAttackRelease("G2", "32n", time, 0.8);
+        }
+        if (e % 2 === 0) bnote(0, "16n", 0.95); // relentless root 8ths
+      } else if (grooveId === "country") {
         // train beat: continuous brushed 16ths on the snare, accents on 2 & 4
         const accent = e === 4 || e === 12 ? 1 : e % 2 === 0 ? 0.4 : 0.28;
         J.snare.triggerAttackRelease("32n", time, accent * hum());
@@ -884,7 +958,12 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
         if (e === 0) bnote(0, "4n", 0.95);
         if (e === 8) bnote(chord.iv[2], "4n", 0.9); // root–5 alternation
         if (e === 14) bnote(chord.third, "16n", 0.7); // little walk into the next bar
-        if (e === 4 || e === 12) J.comp.triggerAttackRelease(shell, "8n", time, 0.45 * hum());
+        if (e === 4 || e === 12) strum(J.aguitar, triad, "8n", 0.55); // acoustic chop on the backbeat
+      } else if (grooveId === "bluegrass") {
+        // boom–chick, no drums — the guitar chop IS the snare in bluegrass
+        if (e === 0 || e === 4) bnote(e === 0 ? 0 : chord.iv[2], "8n", 1);
+        if (e === 2 || e === 6) strum(J.aguitar, triad, "16n", 0.75, 0.008);
+        if (e === 7 && bar % 2 === 1) bnote(chord.third, "16n", 0.7); // walking run into the change
       } else if (grooveId === "slow128") {
         // 12/8: four beats of three triplet-eighths
         J.hat.triggerAttackRelease("32n", time, (e % 3 === 0 ? 0.85 : 0.4) * hum());
@@ -905,7 +984,7 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
           J.snare.triggerAttackRelease("16n", time, 0.65 * hum());
         }
         if (e === 0) bnote(bar % 2 === 0 ? 0 : chord.iv[2], "2n", 0.95);
-        if (e === 2 || e === 4) J.comp.triggerAttackRelease(shell, "8n", time, 0.5 * hum());
+        if (e === 2 || e === 4) strum(J.aguitar, triad, "8n", 0.5); // waltz strums on 2 & 3
       }
     } catch (err) {}
 
@@ -920,6 +999,7 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
     buildJamSynths();
     try { await Tone.loaded(); } catch (e) {} // sample fetch — first press only
     const groove = GROOVES[grooveKey];
+    try { jam.current.dist.wet.value = groove.drive || 0; } catch (e) {}
     jam.current.step = 0;
     setJamBar(0);
     Tone.Transport.bpm.value = bpm;
@@ -958,6 +1038,9 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
     // eslint-disable-next-line
   }, [progKey, grooveKey]);
 
+  // each style has its natural tempo — adopt it when the style changes
+  useEffect(() => { setBpm(GROOVES[grooveKey].bpm); }, [grooveKey]);
+
   useEffect(() => {
     const t = timers.current;
     return () => {
@@ -965,7 +1048,7 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
       Tone.Transport.stop();
       Tone.Transport.cancel();
       const J = jam.current;
-      ["kick", "snare", "snBody", "hat", "bass", "comp", "bus", "verb", "limiter"].forEach((k) => {
+      ["kick", "snare", "snBody", "hat", "bass", "comp", "dist", "eguitar", "aguitar", "bus", "verb", "limiter"].forEach((k) => {
         try { J[k]?.dispose(); } catch (e) {}
       });
       try { strumRef.current?.dispose(); } catch (e) {}
@@ -1016,7 +1099,6 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
   }, [playMidi]);
 
   /* ---------------- jam renderer ---------------- */
-  const jamProg = PROGRESSIONS[progKey];
   const jamGroove = GROOVES[grooveKey];
   const jamChord = chordAt(jamKey, jamProg.bars[Math.min(jamBar, jamProg.bars.length - 1)]);
   const safeScale = SCALES[jamProg.safe];
@@ -1667,6 +1749,7 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
                         {Object.entries(PROGRESSIONS).map(([k, v]) => (
                           <option key={k} value={k}>{v.name}</option>
                         ))}
+                        <option value="custom">Custom — build your own</option>
                       </select>
                     </div>
                     <div>
@@ -1705,29 +1788,95 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
                     </button>
                   </div>
 
-                  {/* bar grid */}
+                  {/* custom progression builder */}
+                  {progKey === "custom" && (
+                    <div className="mt-4 pt-4 border-t border-white/8">
+                      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                        <div className="mono text-[10px] text-zinc-500">
+                          NASHVILLE NUMBERS IN {NOTES[jamKey]} — drag into a bar, or tap a number then tap bars
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="mono text-[10px] text-zinc-500">BARS</span>
+                          <Seg value={customBars.length} onChange={(n) => {
+                            setCustomBars((prev) => {
+                              const next = prev.slice(0, n);
+                              while (next.length < n) next.push(null);
+                              return next;
+                            });
+                          }} options={[{ v: 4, l: "4" }, { v: 8, l: "8" }, { v: 12, l: "12" }]} />
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mb-3">
+                        {NASHVILLE.map((ch, i) => {
+                          const name = chordAt(jamKey, [ch.d, ch.q]).name;
+                          const sel = selectedChip === i;
+                          return (
+                            <button key={ch.l} draggable
+                              onDragStart={(ev) => ev.dataTransfer.setData("text/plain", String(i))}
+                              onClick={() => setSelectedChip(sel ? null : i)}
+                              className={`rounded-lg px-2.5 py-1.5 border text-center transition-all cursor-grab active:cursor-grabbing ${
+                                sel ? "border-cyan-300 bg-cyan-400/20" : "border-white/10 bg-white/5 hover:bg-white/10"
+                              }`}>
+                              <div className={`display font-bold text-sm leading-none ${sel ? "text-cyan-200" : "text-white"}`}>{ch.l}</div>
+                              <div className="mono text-[9px] text-zinc-500 mt-0.5">{name}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* bar grid (editable slots when custom) */}
                   <div className={`grid gap-1.5 mt-4 ${
-                    jamProg.bars.length > 4
+                    (progKey === "custom" ? customBars : jamProg.bars).length > 4
                       ? "grid-cols-4 sm:grid-cols-6 lg:grid-cols-12"
                       : "grid-cols-4"
                   }`}>
-                    {jamProg.bars.map((b, i) => {
+                    {(progKey === "custom" ? customBars : jamProg.bars).map((b, i) => {
                       const cur = jamPlaying && i === jamBar;
-                      const c = chordAt(jamKey, b);
+                      const isCustom = progKey === "custom";
+                      const eff = isCustom ? filledCustom[i] : b;
+                      const c = eff ? chordAt(jamKey, eff) : null;
+                      const carried = isCustom && !b;
+                      const place = (chipIdx) => {
+                        const ch = NASHVILLE[chipIdx];
+                        if (!ch) return;
+                        setCustomBars((prev) => prev.map((x, j) => (j === i ? [ch.d, ch.q] : x)));
+                      };
                       return (
                         <div key={i}
-                          className={`rounded-lg py-2 text-center border transition-all ${cur ? "bs-beat" : ""}`}
+                          onDragOver={isCustom ? (ev) => ev.preventDefault() : undefined}
+                          onDrop={isCustom ? (ev) => { ev.preventDefault(); place(Number(ev.dataTransfer.getData("text/plain"))); } : undefined}
+                          onClick={isCustom && selectedChip !== null ? () => place(selectedChip) : undefined}
+                          className={`relative rounded-lg py-2 text-center border transition-all ${cur ? "bs-beat" : ""} ${
+                            isCustom ? "cursor-pointer" : ""
+                          } ${isCustom && selectedChip !== null ? "border-dashed" : ""}`}
                           style={cur ? {
                             background: "linear-gradient(135deg,rgba(34,227,216,0.28),rgba(124,108,255,0.28))",
                             borderColor: "rgba(255,255,255,0.3)",
                             boxShadow: "0 0 16px rgba(124,108,255,0.4)",
-                          } : { background: "rgba(255,255,255,0.03)", borderColor: "rgba(255,255,255,0.07)" }}>
+                          } : {
+                            background: "rgba(255,255,255,0.03)",
+                            borderColor: isCustom && selectedChip !== null ? "rgba(34,227,216,0.4)" : "rgba(255,255,255,0.07)",
+                          }}>
                           <div className="mono text-[9px] text-zinc-500">{i + 1}</div>
-                          <div className={`display font-bold text-sm ${cur ? "text-white" : "text-zinc-400"}`}>{c.name}</div>
+                          <div className={`display font-bold text-sm ${cur ? "text-white" : carried ? "text-zinc-600" : "text-zinc-400"}`}>
+                            {c ? c.name : "+"}
+                          </div>
+                          {isCustom && b && (
+                            <button onClick={(ev) => { ev.stopPropagation(); setCustomBars((prev) => prev.map((x, j) => (j === i ? null : x))); }}
+                              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-black border border-white/20 text-zinc-500 hover:text-white text-[9px] leading-none"
+                              title="Clear bar">×</button>
+                          )}
                         </div>
                       );
                     })}
                   </div>
+                  {progKey === "custom" && (
+                    <p className="mono text-[10px] text-zinc-500 mt-2">
+                      Faded chords are carried over from the previous bar · × clears a bar · saved on this device
+                    </p>
+                  )}
                 </Panel>
 
                 <Panel className="p-2 sm:p-4">
