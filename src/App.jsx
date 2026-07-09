@@ -3,10 +3,15 @@ import * as Tone from "tone";
 import {
   Music, Zap, Target, Play, Square, Volume2, Award, Flame, RotateCcw,
   Check, X, Activity, Sparkles, Brain, Guitar, Ear, ChevronRight,
-  Radio, Crosshair, Layers, User, LogOut, BookOpen, LayoutGrid
+  Radio, Crosshair, Layers, User, LogOut, BookOpen, LayoutGrid,
+  Lightbulb, Clapperboard, Download, Copy, ExternalLink, Shuffle
 } from "lucide-react";
 import { supabase, isConfigured } from "./lib/supabase";
 import { makeBassSampler, makePianoSampler } from "./lib/jamSamples";
+import {
+  generateLick, layoutLick, lickToPNG, generateSongIdea,
+  generateReelIdea, searchSongsterr,
+} from "./lib/ideas";
 import Auth from "./Auth.jsx";
 
 /* iOS routes WebAudio through the "ambient" category, which the ring/silent
@@ -508,6 +513,44 @@ function ChordDiagram({ rootPc, quality, form, onStrum }) {
   );
 }
 
+/* ----------------------------- Lick tab notation ----------------------------- */
+
+function TabSVG({ events }) {
+  const { cols, bars, totalW } = layoutLick(events);
+  const rowH = 26, padT = 16, padB = 22;
+  const H = padT + rowH * 5 + padB;
+  const sy = (s) => padT + s * rowH;
+  return (
+    <div className="overflow-x-auto" style={{ WebkitOverflowScrolling: "touch" }}>
+      <svg viewBox={`0 0 ${totalW} ${H}`}
+        style={{ width: "100%", height: "auto", minWidth: Math.min(totalW, 640), display: "block" }}>
+        {["e", "B", "G", "D", "A", "E"].map((nm, s) => (
+          <g key={s}>
+            <text x={4} y={sy(s) + 3.5} className="mono" fontSize="10" fill="#6a6a78">{nm}</text>
+            <line x1={18} y1={sy(s)} x2={totalW - 6} y2={sy(s)}
+              stroke="rgba(210,210,225,0.3)" strokeWidth="1" />
+          </g>
+        ))}
+        {bars.map((bx, i) => (
+          <line key={i} x1={bx} y1={sy(0) - 8} x2={bx} y2={sy(5) + 8}
+            stroke="rgba(210,210,225,0.18)" strokeWidth="1.5" />
+        ))}
+        {cols.map(({ x, ev }, i) => (
+          <g key={i}>
+            <rect x={x - 9} y={sy(ev.s) - 9} width={ev.tech ? 26 : 18} height="18" fill="#101016" />
+            <text x={x} y={sy(ev.s) + 4} textAnchor="middle" className="mono"
+              fontSize="12" fontWeight="700" fill="#fff">{ev.f}</text>
+            {ev.tech && (
+              <text x={x + 12} y={sy(ev.s) + 3} textAnchor="middle" className="mono"
+                fontSize="9.5" fill="#22e3d8">{ev.tech}</text>
+            )}
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
 /* ----------------------------- UI atoms ----------------------------- */
 
 const Panel = ({ children, className = "" }) => (
@@ -554,6 +597,19 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
   // chords tab
   const [chordRoot, setChordRoot] = useState(9);
   const [chordType, setChordType] = useState("dom7");
+
+  // ideas tab
+  const [ideaKey, setIdeaKey] = useState(9);
+  const [ideaScale, setIdeaScale] = useState("minPent");
+  const [lickStyle, setLickStyle] = useState("bluesy");
+  const [lick, setLick] = useState(null);
+  const [songIdea, setSongIdea] = useState(null);
+  const [tabQuery, setTabQuery] = useState("");
+  const [tabSearch, setTabSearch] = useState({ status: "idle", items: [] });
+
+  // create tab
+  const [reel, setReel] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   // progression (hydrated from cloud or local save)
   const [xp, setXp] = useState(init.xp || 0);
@@ -651,6 +707,79 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
       try { strumRef.current.triggerAttackRelease(midiName(m), 1.4, now + i * 0.045); } catch (e) {}
     });
   }, []);
+
+  /* ---------------- ideas & create handlers ---------------- */
+  const newLick = useCallback((k = ideaKey, sc = ideaScale, st = lickStyle) => {
+    setLick(generateLick(k, SCALES[sc].iv, st));
+  }, [ideaKey, ideaScale, lickStyle]);
+
+  useEffect(() => {
+    if (tab === "ideas" || tab === "create") {
+      if (!lick) newLick();
+      if (tab === "ideas" && !songIdea) setSongIdea(generateSongIdea(Object.keys(PROGRESSIONS), Object.keys(GROOVES)));
+      if (tab === "create" && !reel) setReel(generateReelIdea(NOTES[ideaKey], SCALES[ideaScale].name, PROGRESSIONS[progKey].name));
+    }
+    // eslint-disable-next-line
+  }, [tab]);
+
+  useEffect(() => { if (lick) newLick(); /* eslint-disable-next-line */ }, [ideaKey, ideaScale, lickStyle]);
+
+  const playLick = useCallback(async () => {
+    if (!lick) return;
+    await ensureAudio();
+    await strumChord([]); // ensures the poly synth exists
+    const eighth = 30 / lick.bpm;
+    let t = Tone.now() + 0.08;
+    lick.events.forEach((ev) => {
+      try { strumRef.current.triggerAttackRelease(midiName(ev.midi), ev.dur * eighth * 0.92, t); } catch (e) {}
+      t += ev.dur * eighth;
+    });
+  }, [lick, ensureAudio, strumChord]);
+
+  const downloadLick = useCallback(async () => {
+    if (!lick) return;
+    const blob = await lickToPNG(
+      lick,
+      `${NOTES[ideaKey]} ${SCALES[ideaScale].name} lick`,
+      `${lick.bpm} bpm · ${lickStyle} feel`
+    );
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `bsharp-lick-${NOTES[ideaKey].replace("#", "s")}-${ideaScale}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }, [lick, ideaKey, ideaScale, lickStyle]);
+
+  const loadIdeaInJam = useCallback(() => {
+    if (!songIdea) return;
+    setJamKey(songIdea.keyPc);
+    setProgKey(songIdea.prog);
+    setGrooveKey(songIdea.groove);
+    setBpm(songIdea.bpm);
+    setTab("jam");
+  }, [songIdea]);
+
+  const doTabSearch = useCallback(async () => {
+    const q = tabQuery.trim();
+    if (!q) return;
+    setTabSearch({ status: "loading", items: [] });
+    try {
+      const items = await searchSongsterr(q);
+      setTabSearch({ status: "ok", items });
+    } catch (e) {
+      setTabSearch({ status: "error", items: [] });
+    }
+  }, [tabQuery]);
+
+  const copyCaption = useCallback(async () => {
+    if (!reel) return;
+    try {
+      await navigator.clipboard.writeText(reel.caption);
+      setCopied(true);
+      const t = setTimeout(() => setCopied(false), 1600);
+      timers.current.push(t);
+    } catch (e) {}
+  }, [reel]);
 
   const playScale = useCallback(async () => {
     await ensureAudio();
@@ -1224,6 +1353,8 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
             { v: "chords", l: "Chords", icon: LayoutGrid },
             { v: "jam", l: "Jam", icon: Radio },
             { v: "train", l: "Train", icon: Target },
+            { v: "ideas", l: "Ideas", icon: Lightbulb },
+            { v: "create", l: "Create", icon: Clapperboard },
             { v: "theory", l: "Theory", icon: BookOpen },
           ].map((t) => {
             const Icon = t.icon;
@@ -1811,6 +1942,279 @@ function BSharp({ username, isGuest, onSignOut, onSignIn, initialProgress, onPer
               className="mono text-[11px] text-zinc-600 hover:text-zinc-400">
               reset progress
             </button>
+          </div>
+        )}
+
+        {/* ===================== IDEAS ===================== */}
+        {tab === "ideas" && (
+          <div className="bs-up grid lg:grid-cols-[1fr_300px] gap-4">
+            <div className="space-y-4 min-w-0">
+              {/* lick generator */}
+              <Panel className="p-3 sm:p-4">
+                <div className="flex flex-wrap gap-x-6 gap-y-3 items-end">
+                  <div className="min-w-0 max-w-full">
+                    <div className="mono text-[10px] text-zinc-500 mb-1.5">KEY</div>
+                    <div className="flex flex-wrap gap-1">
+                      {NOTES.map((n, i) => (
+                        <button key={n} onClick={() => setIdeaKey(i)}
+                          className={`mono text-xs w-9 h-9 rounded-lg transition-all ${
+                            ideaKey === i ? "text-black font-bold" : "bg-white/5 text-zinc-400 hover:bg-white/10"
+                          }`}
+                          style={ideaKey === i ? { background: "#ff2e4d" } : {}}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="mono text-[10px] text-zinc-500 mb-1.5">SCALE</div>
+                    <select value={ideaScale} onChange={(e) => setIdeaScale(e.target.value)}
+                      className="mono text-xs bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-white outline-none">
+                      {SCALE_GROUPS.map((g) => (
+                        <optgroup key={g} label={g}>
+                          {Object.entries(SCALES).filter(([, v]) => v.grp === g).map(([k, v]) => (
+                            <option key={k} value={k}>{v.name}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <div className="mono text-[10px] text-zinc-500 mb-1.5">FEEL</div>
+                    <Seg value={lickStyle} onChange={setLickStyle} options={[
+                      { v: "bluesy", l: "Bluesy" },
+                      { v: "melodic", l: "Melodic" },
+                      { v: "fast", l: "Fast" },
+                    ]} />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap mt-4 pt-4 border-t border-white/8">
+                  <button onClick={() => newLick()}
+                    className="flex items-center gap-2 display font-bold text-sm px-4 py-2.5 rounded-xl text-black"
+                    style={{ background: "linear-gradient(135deg,#22e3d8,#7c6cff)" }}>
+                    <Shuffle size={14} /> New lick
+                  </button>
+                  <button onClick={playLick}
+                    className="flex items-center gap-2 mono text-xs px-4 py-2.5 rounded-lg border border-cyan-400/40 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20">
+                    <Play size={13} /> Play it
+                  </button>
+                  <button onClick={downloadLick}
+                    className="flex items-center gap-2 mono text-xs px-4 py-2.5 rounded-lg border border-white/10 text-zinc-400 hover:text-white">
+                    <Download size={13} /> PNG for posting
+                  </button>
+                  <span className="mono text-[10px] text-zinc-500 ml-auto">
+                    {lick ? `${lick.bpm} bpm · frets ${lick.window[0]}–${lick.window[1]}` : ""}
+                  </span>
+                </div>
+
+                {lick && (
+                  <div className="mt-3 rounded-xl bg-black/30 border border-white/8 p-2">
+                    <TabSVG events={lick.events} />
+                    <p className="mono text-[10px] text-zinc-500 px-2 pb-1">
+                      h hammer · p pull · / slide · b bend · ~ vibrato
+                    </p>
+                  </div>
+                )}
+              </Panel>
+
+              {/* song idea */}
+              {songIdea && (
+                <Panel className="p-4 sm:p-5">
+                  <div className="flex items-center gap-2 text-cyan-300 mb-3">
+                    <Lightbulb size={15} />
+                    <span className="mono text-[10px] tracking-widest">SONG STARTER</span>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2.5 mb-4">
+                    {[
+                      ["Key & progression", `${NOTES[songIdea.keyPc]} · ${PROGRESSIONS[songIdea.prog].name}`],
+                      ["Groove", `${GROOVES[songIdea.groove].name} · ${GROOVES[songIdea.groove].sig} · ${songIdea.bpm} bpm`],
+                      ["Mood", songIdea.mood],
+                      ["Constraint", songIdea.technique],
+                      ["Starting seed", songIdea.seed],
+                    ].map(([k, v]) => (
+                      <div key={k} className={k === "Starting seed" ? "sm:col-span-2" : ""}>
+                        <div className="mono text-[10px] text-zinc-500">{k.toUpperCase()}</div>
+                        <div className="text-sm text-zinc-200 mt-0.5">{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => setSongIdea(generateSongIdea(Object.keys(PROGRESSIONS), Object.keys(GROOVES)))}
+                      className="flex items-center gap-2 mono text-xs px-4 py-2.5 rounded-lg border border-white/10 text-zinc-400 hover:text-white">
+                      <Shuffle size={13} /> New idea
+                    </button>
+                    <button onClick={loadIdeaInJam}
+                      className="flex items-center gap-2 mono text-xs px-4 py-2.5 rounded-lg text-black font-bold"
+                      style={{ background: "linear-gradient(135deg,#22e3d8,#7c6cff)" }}>
+                      <Radio size={13} /> Load in Jam
+                    </button>
+                  </div>
+                </Panel>
+              )}
+
+              {/* find tabs */}
+              <Panel className="p-4 sm:p-5">
+                <div className="flex items-center gap-2 text-cyan-300 mb-3">
+                  <ExternalLink size={14} />
+                  <span className="mono text-[10px] tracking-widest">FIND REAL SONG TABS</span>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <input value={tabQuery} onChange={(e) => setTabQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && doTabSearch()}
+                    placeholder="Song or artist…"
+                    className="mono text-xs bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-white outline-none flex-1 min-w-40" />
+                  <button onClick={doTabSearch}
+                    className="mono text-xs px-4 py-2.5 rounded-lg text-black font-bold"
+                    style={{ background: "linear-gradient(135deg,#22e3d8,#7c6cff)" }}>
+                    Search
+                  </button>
+                </div>
+                {tabSearch.status === "loading" && (
+                  <p className="mono text-[11px] text-zinc-500 mt-3">Searching Songsterr…</p>
+                )}
+                {tabSearch.status === "ok" && tabSearch.items.length > 0 && (
+                  <div className="mt-3 space-y-1.5">
+                    {tabSearch.items.map((it) => (
+                      <a key={it.id} href={it.url} target="_blank" rel="noreferrer"
+                        className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 border border-white/8 bg-white/[0.03] hover:border-cyan-400/40 transition-colors">
+                        <span className="text-sm text-zinc-200">
+                          {it.title} <span className="text-zinc-500">— {it.artist}</span>
+                        </span>
+                        <ExternalLink size={12} className="text-zinc-500 shrink-0" />
+                      </a>
+                    ))}
+                  </div>
+                )}
+                {tabSearch.status === "ok" && tabSearch.items.length === 0 && (
+                  <p className="mono text-[11px] text-zinc-500 mt-3">No matches — try fewer words.</p>
+                )}
+                {tabSearch.status === "error" && tabQuery.trim() && (
+                  <p className="text-xs text-zinc-400 mt-3">
+                    Songsterr didn't answer (their API can be moody). Search directly:{" "}
+                    <a className="text-cyan-300 underline" target="_blank" rel="noreferrer"
+                      href={`https://www.songsterr.com/?pattern=${encodeURIComponent(tabQuery)}`}>Songsterr</a>
+                    {" · "}
+                    <a className="text-cyan-300 underline" target="_blank" rel="noreferrer"
+                      href={`https://www.ultimate-guitar.com/search.php?search_type=title&value=${encodeURIComponent(tabQuery)}`}>Ultimate Guitar</a>
+                  </p>
+                )}
+                <p className="mono text-[10px] text-zinc-500 mt-3">
+                  Powered by Songsterr's public API. Ultimate Guitar has no public API, so that link opens their search.
+                </p>
+              </Panel>
+            </div>
+
+            {/* guide */}
+            <Panel className="p-5 h-fit">
+              <div className="flex items-center gap-2 text-cyan-300 mb-1">
+                <Lightbulb size={15} />
+                <span className="mono text-[10px] tracking-widest">HOW TO USE A LICK</span>
+              </div>
+              <h2 className="display font-extrabold text-2xl leading-tight mb-4">Steal like a musician</h2>
+              {[
+                ["1 · Loop it", "Play it until your hands know it — 10 times slow beats 3 times fast."],
+                ["2 · Move it", "Same shape, new key: shift it up two frets and it's in B."],
+                ["3 · Bend it", "Change the last note, the rhythm, or where it starts in the bar. Now it's yours."],
+                ["4 · Use it", "Load a Song Starter into the Jam tab and drop the lick over the changes."],
+              ].map(([k, v]) => (
+                <div key={k} className="py-2.5 border-b border-white/8 last:border-0">
+                  <div className="mono text-[10px] text-zinc-500">{k}</div>
+                  <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">{v}</p>
+                </div>
+              ))}
+              <div className="mt-4 rounded-xl p-3 bg-white/[0.03] border border-white/8">
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Every generated lick stays inside your chosen scale and position, starts and ends
+                  on a strong tone — there are no wrong notes to unlearn.
+                </p>
+              </div>
+            </Panel>
+          </div>
+        )}
+
+        {/* ===================== CREATE ===================== */}
+        {tab === "create" && reel && (
+          <div className="bs-up grid lg:grid-cols-[1fr_300px] gap-4">
+            <div className="space-y-4 min-w-0">
+              <Panel className="p-4 sm:p-5">
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                  <div className="flex items-center gap-2 text-cyan-300">
+                    <Clapperboard size={15} />
+                    <span className="mono text-[10px] tracking-widest">REEL BLUEPRINT</span>
+                  </div>
+                  <button onClick={() => setReel(generateReelIdea(NOTES[ideaKey], SCALES[ideaScale].name, PROGRESSIONS[progKey].name))}
+                    className="flex items-center gap-2 mono text-xs px-3.5 py-2 rounded-lg border border-white/10 text-zinc-400 hover:text-white">
+                    <Shuffle size={13} /> New idea
+                  </button>
+                </div>
+                <h2 className="display font-extrabold text-2xl leading-tight">{reel.format.name}</h2>
+                <p className="text-sm text-cyan-300 mt-1 mb-4">
+                  “{reel.format.hook(NOTES[ideaKey], SCALES[ideaScale].name)}”
+                </p>
+                <div className="mono text-[10px] text-zinc-500 mb-2">SHOT LIST</div>
+                <div className="space-y-1.5 mb-4">
+                  {reel.format.shots.map((s, i) => (
+                    <div key={i} className="flex gap-3 rounded-lg px-3 py-2 border border-white/8 bg-white/[0.03]">
+                      <span className="mono text-[10px] text-zinc-500 pt-0.5">{i + 1}</span>
+                      <span className="text-xs text-zinc-300">{s}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mono text-[10px] text-zinc-500 mb-2">CAPTION (READY TO PASTE)</div>
+                <div className="rounded-xl bg-black/40 border border-white/10 p-3 whitespace-pre-wrap text-xs text-zinc-300 leading-relaxed">
+                  {reel.caption}
+                </div>
+                <button onClick={copyCaption}
+                  className="mt-3 flex items-center gap-2 mono text-xs px-4 py-2.5 rounded-lg text-black font-bold"
+                  style={{ background: copied ? "#22c55e" : "linear-gradient(135deg,#22e3d8,#7c6cff)" }}>
+                  <Copy size={13} /> {copied ? "Copied!" : "Copy caption"}
+                </button>
+              </Panel>
+
+              <Panel className="p-4 sm:p-5">
+                <div className="flex items-center gap-2 text-cyan-300 mb-3">
+                  <Download size={14} />
+                  <span className="mono text-[10px] tracking-widest">POST ASSET — TAB CARD</span>
+                </div>
+                <p className="text-xs text-zinc-400 leading-relaxed mb-3">
+                  Export the current lick ({NOTES[ideaKey]} {SCALES[ideaScale].name}, {lickStyle} feel)
+                  as a 1080×1080 tab card — drop it into a reel, a carousel slide, or a story.
+                  Generate a different lick in the Ideas tab first if this one isn't the one.
+                </p>
+                {lick && (
+                  <div className="rounded-xl bg-black/30 border border-white/8 p-2 mb-3">
+                    <TabSVG events={lick.events} />
+                  </div>
+                )}
+                <button onClick={downloadLick}
+                  className="flex items-center gap-2 mono text-xs px-4 py-2.5 rounded-lg text-black font-bold"
+                  style={{ background: "linear-gradient(135deg,#22e3d8,#7c6cff)" }}>
+                  <Download size={13} /> Download 1080×1080 PNG
+                </button>
+              </Panel>
+            </div>
+
+            {/* posting guide */}
+            <Panel className="p-5 h-fit">
+              <div className="flex items-center gap-2 text-cyan-300 mb-1">
+                <Clapperboard size={15} />
+                <span className="mono text-[10px] tracking-widest">WHAT WORKS ON IG</span>
+              </div>
+              <h2 className="display font-extrabold text-2xl leading-tight mb-4">Guitar content rules</h2>
+              {[
+                ["Sound first", "Lead with the guitar, not your face or a title card. You have ~1.5s before the swipe."],
+                ["Loop the end into the start", "Reels that loop cleanly get rewatched, and rewatches are the algorithm's favourite meal."],
+                ["One idea per post", "A lick, a tip, a myth — never two. Save the rest for tomorrow."],
+                ["Show the tab", "Overlay the PNG export while you play slow. Saves + shares beat likes."],
+                ["Post the attempt, not the perfection", "The take with a small flub outperforms the studio one. People follow people."],
+              ].map(([k, v]) => (
+                <div key={k} className="py-2.5 border-b border-white/8 last:border-0">
+                  <div className="mono text-[10px] text-zinc-500">{k.toUpperCase()}</div>
+                  <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">{v}</p>
+                </div>
+              ))}
+            </Panel>
           </div>
         )}
 
