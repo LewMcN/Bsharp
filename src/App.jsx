@@ -1609,7 +1609,7 @@ function BSharp({
               <div className="mono text-[9px] text-zinc-500 mt-1">{xp} XP</div>
             </div>
             <div className="flex items-center gap-2 pl-3 border-l border-white/10">
-              <button onClick={openSettings} title="Settings & profile"
+              <button onClick={openSettings} title="Settings & profile" aria-label="Settings and profile"
                 className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden hover:border-cyan-400/40 transition-colors">
                 {profile?.avatar_url ? (
                   <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
@@ -1629,7 +1629,7 @@ function BSharp({
                   Sign in
                 </button>
               ) : (
-                <button onClick={openSettings} title="Settings & profile"
+                <button onClick={openSettings} title="Settings & profile" aria-label="Settings and profile"
                   className="p-2 rounded-lg border border-white/10 text-zinc-400 hover:text-white transition-colors">
                   <Settings size={13} />
                 </button>
@@ -2074,7 +2074,7 @@ function BSharp({
                           {isCustom && b && (
                             <button onClick={(ev) => { ev.stopPropagation(); setCustomBars((prev) => prev.map((x, j) => (j === i ? null : x))); }}
                               className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-black border border-white/20 text-zinc-500 hover:text-white text-[9px] leading-none"
-                              title="Clear bar">×</button>
+                              title="Clear bar" aria-label="Clear bar">×</button>
                           )}
                         </div>
                       );
@@ -2395,13 +2395,13 @@ function BSharp({
                           <div className="mono text-[10px] text-zinc-500">{timeAgo(post.created_at)}</div>
                         </div>
                         {ig && (
-                          <a href={ig} target="_blank" rel="noreferrer" title="Instagram"
+                          <a href={ig} target="_blank" rel="noreferrer" title="Instagram" aria-label="Instagram profile"
                             className="p-2 rounded-lg text-zinc-500 hover:text-cyan-300 transition-colors">
                             <Instagram size={15} />
                           </a>
                         )}
                         {userId === post.user_id && (
-                          <button onClick={() => onDeletePost(post)} title="Delete"
+                          <button onClick={() => onDeletePost(post)} title="Delete" aria-label="Delete post"
                             className="p-2 rounded-lg text-zinc-600 hover:text-red-400 transition-colors">
                             <Trash2 size={14} />
                           </button>
@@ -2961,7 +2961,7 @@ function BSharp({
                 <>
                   <div className="flex items-center gap-3 mt-5">
                     <label className="relative w-16 h-16 rounded-full bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center cursor-pointer hover:border-cyan-400/40 transition-colors shrink-0"
-                      title="Change photo">
+                      title="Change photo" aria-label="Change profile photo">
                       <input type="file" accept="image/*" className="hidden"
                         onChange={(e) => onAvatarPick(e.target.files?.[0])} />
                       {profile?.avatar_url
@@ -3033,7 +3033,7 @@ function BSharp({
         )}
 
         <footer className="mt-8 mono text-[10px] text-zinc-600 flex items-center gap-2">
-          <Guitar size={11} /> B Sharp v2 — fretboard · scales · arpeggios · jam trainer · mastery training
+          <Guitar size={11} /> B Sharp — fretboard intelligence
         </footer>
       </div>
     </div>
@@ -3081,6 +3081,11 @@ export default function Root() {
   useEffect(() => {
     try { localStorage.setItem("bsharp-theme", theme); } catch (e) {}
   }, [theme]);
+
+  // returning guests skip the sign-in screen
+  useEffect(() => {
+    try { if (localStorage.getItem("bsharp-guest") === "1") setScreen("app"); } catch (e) {}
+  }, []);
 
   // watch the Supabase session
   useEffect(() => {
@@ -3144,7 +3149,12 @@ export default function Root() {
   if (!entered) return <Landing onEnter={() => setEntered(true)} />;
   if (!authReady) return <Splash />;
   if (session && loadingCloud) return <Splash />;
-  if (screen === "auth" && !session) return <Auth onGuest={() => setScreen("app")} />;
+  if (screen === "auth" && !session) {
+    return <Auth onGuest={() => {
+      try { localStorage.setItem("bsharp-guest", "1"); } catch (e) {}
+      setScreen("app");
+    }} />;
+  }
 
   const signedIn = Boolean(session);
   return (
@@ -3158,7 +3168,10 @@ export default function Root() {
       theme={theme}
       setTheme={setTheme}
       onSignOut={signOut}
-      onSignIn={() => setScreen("auth")}
+      onSignIn={() => {
+        try { localStorage.removeItem("bsharp-guest"); } catch (e) {}
+        setScreen("auth");
+      }}
       initialProgress={signedIn ? cloud : loadGuest()}
       onPersist={persist}
     />
