@@ -21,6 +21,27 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Refuse to publish a service-role key
+        env:
+          KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          python3 - <<'EOF'
+          import base64, os, sys
+          k = os.environ.get("KEY", "")
+          if not k:
+              print("No Supabase key configured - building guest-only."); sys.exit(0)
+          if k.startswith("sb_secret_"):
+              sys.exit("VITE_SUPABASE_ANON_KEY is a SECRET key. Put the publishable/anon key in the secret instead.")
+          parts = k.split(".")
+          if len(parts) == 3:
+              try:
+                  pad = parts[1] + "=" * (-len(parts[1]) % 4)
+                  if b"service_role" in base64.urlsafe_b64decode(pad):
+                      sys.exit("VITE_SUPABASE_ANON_KEY contains a service_role JWT. Rotate it in Supabase and use the anon public key.")
+              except Exception:
+                  pass
+          print("Key looks like a public (anon/publishable) key - OK.")
+          EOF
       - run: npm ci
       - run: npm run build -- --base=/Bsharp/
         env:
