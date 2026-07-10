@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { LogIn, UserPlus, Guitar, AlertTriangle, MailCheck } from "lucide-react";
-import { supabase, isConfigured } from "./lib/supabase";
+import { supabase, isConfigured, initialAuthError } from "./lib/supabase";
 
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,24}$/;
+const APP_URL = () => window.location.origin + window.location.pathname;
 
 export default function Auth({ onGuest }) {
   const [mode, setMode] = useState("signin"); // signin | signup
@@ -12,6 +13,32 @@ export default function Auth({ onGuest }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
+
+  // surface auth errors that arrived in the email-link redirect
+  useEffect(() => {
+    if (!initialAuthError) return;
+    setError(initialAuthError.code === "otp_expired"
+      ? "That confirmation link was already used or has expired — email apps often pre-open links. Type your email and resend below."
+      : (initialAuthError.desc || "").replace(/\+/g, " ") || "The sign-in link didn't work.");
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+  }, []);
+
+  const canResend = error && /confirm|expired|already|invalid/i.test(error);
+  const resend = async () => {
+    if (!email) return setError("Type your email above first, then resend.");
+    setBusy(true);
+    try {
+      const { error: err } = await supabase.auth.resend({
+        type: "signup", email,
+        options: { emailRedirectTo: APP_URL() },
+      });
+      if (err) setError(err.message);
+      else { setError(null); setNotice("New confirmation email sent — open the latest one."); }
+    } catch (e) {
+      setError("Couldn't resend — try again.");
+    }
+    setBusy(false);
+  };
 
   const submit = async () => {
     setError(null);
@@ -27,7 +54,7 @@ export default function Auth({ onGuest }) {
         const { data, error: err } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { username } },
+          options: { data: { username }, emailRedirectTo: APP_URL() },
         });
         if (err) setError(err.message);
         else if (!data.session)
@@ -120,9 +147,15 @@ export default function Auth({ onGuest }) {
               </div>
 
               {error && (
-                <p className="mono text-[11px] text-red-300 bg-red-500/10 border border-red-500/25 rounded-lg px-3 py-2 mt-3">
+                <div className="mono text-[11px] text-red-300 bg-red-500/10 border border-red-500/25 rounded-lg px-3 py-2 mt-3">
                   {error}
-                </p>
+                  {canResend && (
+                    <button onClick={resend} disabled={busy}
+                      className="block mt-2 underline text-cyan-300 hover:text-cyan-200 disabled:opacity-50">
+                      Resend confirmation email
+                    </button>
+                  )}
+                </div>
               )}
               {notice && (
                 <p className="flex items-start gap-2 mono text-[11px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 rounded-lg px-3 py-2 mt-3">
