@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "seed:social": "node scripts/seed-social.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",
