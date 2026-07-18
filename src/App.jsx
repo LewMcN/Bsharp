@@ -19,6 +19,8 @@ import {
 import {
   fetchFeed, createPost, deletePost, toggleLike,
   updateProfile, uploadAvatar, timeAgo, igUrl,
+  searchProfiles, fetchFriendships, sendFriendRequest,
+  acceptFriendRequest, removeFriendship, heartbeat, lastSeenText,
 } from "./lib/social";
 import Auth from "./Auth.jsx";
 
@@ -740,6 +742,15 @@ function BSharp({
   const [posting, setPosting] = useState(false);
   const [postErr, setPostErr] = useState(null);
 
+  // friends & presence
+  const [socialView, setSocialView] = useState("feed"); // feed | friends
+  const [onlineIds, setOnlineIds] = useState(() => new Set());
+  const [fships, setFships] = useState({ friends: [], incoming: [], outgoing: [] });
+  const [fshipsState, setFshipsState] = useState("idle");
+  const [friendQ, setFriendQ] = useState("");
+  const [friendResults, setFriendResults] = useState(null);
+  const [friendMsg, setFriendMsg] = useState(null);
+
   // settings modal
   const [showSettings, setShowSettings] = useState(false);
   const [setName, setSetName] = useState("");
@@ -855,6 +866,76 @@ function BSharp({
       try { strumRef.current.triggerAttackRelease(midiName(m), 1.4, now + i * 0.045); } catch (e) {}
     });
   }, []);
+
+  /* ---------------- presence & heartbeat ---------------- */
+  useEffect(() => {
+    if (!userId || !isConfigured) return;
+    // last-seen heartbeat: on load, then every 60s
+    heartbeat(userId);
+    const iv = setInterval(() => heartbeat(userId), 60000);
+    // realtime presence: who's online right now
+    const ch = supabase.channel("online-users", { config: { presence: { key: userId } } });
+    const refresh = () => setOnlineIds(new Set(Object.keys(ch.presenceState())));
+    ch.on("presence", { event: "sync" }, refresh)
+      .on("presence", { event: "join" }, refresh)
+      .on("presence", { event: "leave" }, refresh)
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") ch.track({ user_id: userId });
+      });
+    return () => {
+      clearInterval(iv);
+      try { supabase.removeChannel(ch); } catch (e) {}
+    };
+  }, [userId]);
+
+  /* ---------------- friends handlers ---------------- */
+  const loadFriendships = useCallback(async () => {
+    if (!userId || !isConfigured) return;
+    setFshipsState("loading");
+    try {
+      setFships(await fetchFriendships(userId));
+      setFshipsState("ready");
+    } catch (e) {
+      setFshipsState("error");
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    if (tab === "social" && socialView === "friends" && fshipsState === "idle") loadFriendships();
+    // eslint-disable-next-line
+  }, [tab, socialView]);
+
+  const doFriendSearch = async () => {
+    if (!friendQ.trim() || !userId) return;
+    setFriendMsg(null);
+    try { setFriendResults(await searchProfiles(friendQ, userId)); }
+    catch (e) { setFriendMsg("Search failed — is upgrade-friends.sql applied?"); }
+  };
+
+  const relationTo = (otherId) => {
+    if (fships.friends.some((f) => f.id === otherId)) return "friends";
+    if (fships.outgoing.some((f) => f.id === otherId)) return "sent";
+    if (fships.incoming.some((f) => f.id === otherId)) return "incoming";
+    return "none";
+  };
+
+  const onSendRequest = async (other) => {
+    setFriendMsg(null);
+    try {
+      await sendFriendRequest(userId, other.id);
+      await loadFriendships();
+      setFriendMsg(`Request sent to ${other.display_name || other.username}`);
+    } catch (e) {
+      setFriendMsg(e.message || "Couldn't send request");
+    }
+  };
+
+  const onAccept = async (row) => {
+    try { await acceptFriendRequest(row.fid); await loadFriendships(); } catch (e) {}
+  };
+  const onRemoveFriendship = async (row) => {
+    try { await removeFriendship(row.fid); await loadFriendships(); } catch (e) {}
+  };
 
   /* ---------------- social handlers ---------------- */
   const loadFeed = useCallback(async () => {
@@ -2314,6 +2395,166 @@ function BSharp({
               </Panel>
             ) : (
               <>
+                <Seg value={socialView} onChange={setSocialView} options={[
+                  { v: "feed", l: "Feed" },
+                  { v: "friends", l: fships.incoming.length ? `Friends · ${fships.incoming.length}` : "Friends" },
+                ]} />
+
+                {socialView === "friends" && (isGuest ? (
+                  <Panel className="p-4 flex items-center justify-between gap-3 flex-wrap">
+                    <p className="text-sm text-zinc-400">Sign in to add friends and see who's online.</p>
+                    <button onClick={onSignIn}
+                      className="mono text-xs px-4 py-2.5 rounded-lg text-black font-bold"
+                      style={{ background: "linear-gradient(135deg,#22e3d8,#7c6cff)" }}>
+                      Sign in
+                    </button>
+                  </Panel>
+                ) : (
+                  <>
+                    {/* find players */}
+                    <Panel className="p-4">
+                      <div className="mono text-[10px] text-zinc-500 mb-2">FIND PLAYERS</div>
+                      <div className="flex gap-2">
+                        <input value={friendQ} onChange={(e) => setFriendQ(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && doFriendSearch()}
+                          placeholder="Search by username…"
+                          className="mono text-xs bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-white outline-none flex-1 min-w-0" />
+                        <button onClick={doFriendSearch}
+                          className="mono text-xs px-4 py-2.5 rounded-lg text-black font-bold"
+                          style={{ background: "linear-gradient(135deg,#22e3d8,#7c6cff)" }}>
+                          Search
+                        </button>
+                      </div>
+                      {friendMsg && <p className="mono text-[11px] text-cyan-300 mt-2">{friendMsg}</p>}
+                      {friendResults && (
+                        <div className="mt-3 space-y-1.5">
+                          {friendResults.length === 0 && (
+                            <p className="mono text-[11px] text-zinc-500">No players found.</p>
+                          )}
+                          {friendResults.map((p) => {
+                            const rel = relationTo(p.id);
+                            return (
+                              <div key={p.id} className="flex items-center gap-2.5 rounded-lg px-3 py-2 border border-white/8 bg-white/[0.03]">
+                                <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center shrink-0">
+                                  {p.avatar_url ? <img src={p.avatar_url} alt="" className="w-full h-full object-cover" />
+                                    : <User size={13} className="text-zinc-500" />}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-sm text-white truncate">{p.display_name || p.username}</div>
+                                  <div className="mono text-[10px] text-zinc-500">@{p.username}</div>
+                                </div>
+                                {rel === "none" && (
+                                  <button onClick={() => onSendRequest(p)}
+                                    className="mono text-[10px] px-2.5 py-1.5 rounded-lg border border-cyan-400/40 text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20 whitespace-nowrap">
+                                    Add friend
+                                  </button>
+                                )}
+                                {rel === "sent" && <span className="mono text-[10px] text-zinc-500">Request sent</span>}
+                                {rel === "incoming" && <span className="mono text-[10px] text-cyan-300">Check requests ↓</span>}
+                                {rel === "friends" && <span className="mono text-[10px] text-emerald-400">Friends ✓</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </Panel>
+
+                    {/* requests */}
+                    {fships.incoming.length > 0 && (
+                      <Panel className="p-4">
+                        <div className="mono text-[10px] text-zinc-500 mb-2">FRIEND REQUESTS</div>
+                        <div className="space-y-1.5">
+                          {fships.incoming.map((p) => (
+                            <div key={p.fid} className="flex items-center gap-2.5 rounded-lg px-3 py-2 border border-cyan-400/20 bg-cyan-400/5">
+                              <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center shrink-0">
+                                {p.avatar_url ? <img src={p.avatar_url} alt="" className="w-full h-full object-cover" />
+                                  : <User size={13} className="text-zinc-500" />}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm text-white truncate">{p.display_name || p.username}</div>
+                                <div className="mono text-[10px] text-zinc-500">@{p.username}</div>
+                              </div>
+                              <button onClick={() => onAccept(p)}
+                                className="mono text-[10px] px-2.5 py-1.5 rounded-lg text-black font-bold"
+                                style={{ background: "linear-gradient(135deg,#22e3d8,#7c6cff)" }}>
+                                Accept
+                              </button>
+                              <button onClick={() => onRemoveFriendship(p)}
+                                className="mono text-[10px] px-2.5 py-1.5 rounded-lg border border-white/10 text-zinc-400 hover:text-white">
+                                Decline
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </Panel>
+                    )}
+
+                    {/* friends list */}
+                    <Panel className="p-4">
+                      <div className="mono text-[10px] text-zinc-500 mb-2">
+                        FRIENDS{fships.friends.length ? ` — ${fships.friends.length}` : ""}
+                      </div>
+                      {fshipsState === "loading" && <p className="mono text-[11px] text-zinc-500">Loading…</p>}
+                      {fshipsState === "error" && (
+                        <p className="text-xs text-zinc-400">
+                          Couldn't load friends — make sure <span className="mono text-cyan-300">upgrade-friends.sql</span> has
+                          been run, then <button onClick={loadFriendships} className="underline text-cyan-300">retry</button>.
+                        </p>
+                      )}
+                      {fshipsState === "ready" && fships.friends.length === 0 && (
+                        <p className="text-xs text-zinc-400">No friends yet — search for players above.</p>
+                      )}
+                      <div className="space-y-1.5">
+                        {fships.friends.map((p) => {
+                          const online = onlineIds.has(p.id);
+                          return (
+                            <div key={p.fid} className="flex items-center gap-2.5 rounded-lg px-3 py-2 border border-white/8 bg-white/[0.03]">
+                              <div className="relative shrink-0">
+                                <div className="w-9 h-9 rounded-full bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center">
+                                  {p.avatar_url ? <img src={p.avatar_url} alt="" className="w-full h-full object-cover" />
+                                    : <User size={14} className="text-zinc-500" />}
+                                </div>
+                                {online && (
+                                  <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2"
+                                    style={{ borderColor: "#101016" }} />
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm text-white truncate">{p.display_name || p.username}</div>
+                                <div className={`mono text-[10px] ${online ? "text-emerald-400" : "text-zinc-500"}`}>
+                                  {online ? "Online" : `Last seen ${lastSeenText(p.last_active_at)}`}
+                                </div>
+                              </div>
+                              <button onClick={() => onRemoveFriendship(p)} title="Remove friend" aria-label="Remove friend"
+                                className="p-1.5 rounded-lg text-zinc-600 hover:text-red-400 transition-colors">
+                                <X size={13} />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </Panel>
+
+                    {fships.outgoing.length > 0 && (
+                      <Panel className="p-4">
+                        <div className="mono text-[10px] text-zinc-500 mb-2">SENT — WAITING</div>
+                        <div className="space-y-1.5">
+                          {fships.outgoing.map((p) => (
+                            <div key={p.fid} className="flex items-center gap-2.5 rounded-lg px-3 py-2 border border-white/8 bg-white/[0.03]">
+                              <div className="min-w-0 flex-1 text-sm text-zinc-300 truncate">@{p.username}</div>
+                              <button onClick={() => onRemoveFriendship(p)}
+                                className="mono text-[10px] px-2.5 py-1.5 rounded-lg border border-white/10 text-zinc-500 hover:text-white">
+                                Cancel
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </Panel>
+                    )}
+                  </>
+                ))}
+
+                {socialView === "feed" && (<>
                 {/* composer */}
                 {isGuest ? (
                   <Panel className="p-4 flex items-center justify-between gap-3 flex-wrap">
@@ -2429,6 +2670,7 @@ function BSharp({
                     </Panel>
                   );
                 })}
+                </>)}
               </>
             )}
           </div>
